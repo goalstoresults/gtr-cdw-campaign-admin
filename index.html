@@ -249,6 +249,23 @@
     }
   };
 
+  function slug(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+function todayISO(){ const d=new Date(); return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-'); }
+
+// Auto-fill when leaving Campaign Name
+document.getElementById('campaignName').addEventListener('blur', () => {
+  const run = document.getElementById('runLabel');
+  if (run.value.trim()) return; // don’t overwrite if user already set it
+  const base = document.getElementById('campaignName').value.trim() || document.getElementById('subject').value.trim() || 'campaign';
+  run.value = `${todayISO()}-${slug(base)}`;
+});
+
+// Keep the manual Suggest button too
+document.getElementById('suggestBtn').onclick = () => {
+  const base = document.getElementById('campaignName').value.trim() || document.getElementById('subject').value.trim() || 'campaign';
+  document.getElementById('runLabel').value = `${todayISO()}-${slug(base)}`;
+};
+
   // Auto-load secret + clients on first visit if remembered
   (function init(){
     const sec = getSecret();
