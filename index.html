@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>GTR · Campaign Registry</title>
+<style>
+  :root{--bg:#0b0f12;--card:#141a1f;--muted:#95a2ad;--accent:#30a46c;--danger:#e5484d;}
+  html,body{background:var(--bg);color:#e6edf3;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0}
+  .wrap{max-width:920px;margin:28px auto;padding:0 16px}
+  .card{background:var(--card);border:1px solid #1f2630;border-radius:14px;padding:20px}
+  h1{font-size:22px;margin:0 0 12px}
+  label{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
+  input,textarea,select{width:100%;background:#0f1418;border:1px solid #2a333c;border-radius:10px;color:#e6edf3;padding:10px 12px;font-size:14px}
+  textarea{min-height:90px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .btns{display:flex;gap:10px;margin-top:16px}
+  button{border:0;border-radius:10px;padding:10px 14px;font-weight:600;cursor:pointer}
+  .primary{background:var(--accent);color:#08130e}
+  .ghost{background:#0f1418;color:#e6edf3;border:1px solid #2a333c}
+  .danger{background:var(--danger)}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;background:#0f1418;border:1px solid #2a333c;border-radius:999px;padding:6px 10px;font-size:12px}
+  .list{margin:8px 0;max-height:260px;overflow:auto;border:1px solid #2a333c;border-radius:10px}
+  .item{padding:10px 12px;border-bottom:1px solid #1f2630;cursor:pointer}
+  .item:hover{background:#0f1418}
+  .ok{color:#34d399}
+  .err{color:#fca5a5}
+  .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+  @media (max-width:880px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Manual Campaign Entry <span class="pill">GTR Core</span></h1>
+    <div class="grid">
+      <div>
+        <label>Admin Secret</label>
+        <input id="secret" type="password" placeholder="Paste ADMIN_SECRET (stored in session only)" />
+        <div class="btns">
+          <button class="ghost" onclick="saveSecret()">Use Secret</button>
+          <span class="muted">Required for API calls</span>
+        </div>
+
+        <label style="margin-top:18px;">Find Client</label>
+        <input id="q" placeholder="Search name/email… (min 2 chars)" oninput="debouncedSearch()" />
+        <div id="list" class="list" hidden></div>
+      </div>
+
+      <div>
+        <label>Selected Client</label>
+        <input id="client_display" placeholder="Pick from list →" disabled />
+
+        <label>Location ID</label>
+        <input id="location_id" placeholder="Auto-filled" />
+
+        <div class="row">
+          <div>
+            <label>Run Label</label>
+            <input id="run_label" placeholder="e.g. 2025-08-10-newsletter-a" />
+          </div>
+          <div>
+            <label>Suggest Run Label</label>
+            <button class="ghost" onclick="suggestLabel()">Suggest</button>
+          </div>
+        </div>
+
+        <label>Campaign Name</label>
+        <input id="campaign_name" placeholder="Aug 10 Newsletter A" />
+
+        <label>Subject</label>
+        <input id="subject" placeholder="3 Tips to Boost Leads" />
+
+        <label>Notes</label>
+        <textarea id="notes" placeholder="Imported from GHL raw exports"></textarea>
+
+        <div class="btns">
+          <button class="primary" onclick="save()">Save / Upsert</button>
+          <button class="ghost" onclick="clearForm()">Clear</button>
+        </div>
+
+        <div id="msg" class="muted" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/** ====== CONFIG ====== **/
+const WORKER_BASE = 'https://gtr-cdw-campaign-admin.<your-workers-subdomain>.workers.dev'; // <-- CHANGE THIS
+
+/** ====== UTIL ====== **/
+const $ = id => document.getElementById(id);
+const API = {
+  async getClients(q){
+    const r = await fetch(`${WORKER_BASE}/api/clients?q=${encodeURIComponent(q)}`, {
+      headers: { 'X-Admin-Secret': sessionStorage.getItem('gtr_admin_secret')||'' }
+    });
+    if(!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async saveCampaign(payload){
+    const r = await fetch(`${WORKER_BASE}/api/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': sessionStorage.getItem('gtr_admin_secret')||'' },
+      body: JSON.stringify(payload)
+    });
+    if(!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+};
+
+function saveSecret(){
+  const val = $('secret').value.trim();
+  if(!val){ $('msg').innerHTML = '<span class="err">Paste your admin secret first.</span>'; return; }
+  sessionStorage.setItem('gtr_admin_secret', val);
+  $('msg').innerHTML = '<span class="ok">Secret saved for this tab.</span>';
+}
+
+let t=null;
+async function debouncedSearch(){
+  const q = $('q').value.trim();
+  if(q.length<2){ $('list').hidden=true; $('list').innerHTML=''; return; }
+  clearTimeout(t);
+  t = setTimeout(async ()=>{
+    try{
+      const res = await API.getClients(q);
+      $('list').innerHTML = (res||[]).slice(0,100).map(c => {
+        const name = c.business_name || c.full_name || '(no name)';
+        const email = c.email || '';
+        const payload = encodeURIComponent(JSON.stringify(c));
+        return `<div class="item" onclick='chooseClient(decodeURIComponent("${payload}"))'>
+          <b>${name}</b> <span class="muted">(${email})</span><br>
+          <span class="muted">loc:</span> ${c.location_id||'-'}
+        </div>`;
+      }).join('') || '<div class="item muted">No results</div>';
+      $('list').hidden = false;
+    }catch(e){
+      $('msg').innerHTML = '<span class="err">'+e.message+'</span>';
+    }
+  }, 250);
+}
+
+function chooseClient(jsonStr){
+  const c = JSON.parse(jsonStr);
+  $('client_display').value = (c.business_name || c.full_name || '(no name)') + (c.email ? '  ·  '+c.email : '');
+  $('location_id').value = c.location_id || '';
+  $('list').hidden = true; $('list').innerHTML = '';
+}
+
+function slugify(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40); }
+function suggestLabel(){
+  const d = new Date();
+  const iso = d.toISOString().slice(0,10); // YYYY-MM-DD
+  const base = slugify($('campaign_name').value) || 'campaign';
+  $('run_label').value = iso + '-' + base;
+}
+
+function clearForm(){
+  ['client_display','location_id','run_label','campaign_name','subject','notes'].forEach(id => $(id).value='');
+  $('q').value=''; $('list').innerHTML=''; $('list').hidden=true; $('msg').innerHTML='';
+}
+
+async function save(){
+  const payload = {
+    location_id: $('location_id').value.trim(),
+    run_label: $('run_label').value.trim(),
+    campaign_name: $('campaign_name').value.trim() || null,
+    subject: $('subject').value.trim() || null,
+    notes: $('notes').value.trim() || null
+  };
+  if(!payload.location_id || !payload.run_label){
+    $('msg').innerHTML = '<span class="err">location_id and run_label are required.</span>';
+    return;
+  }
+  try{
+    await API.saveCampaign(payload);
+    $('msg').innerHTML = '<span class="ok">Saved. You can now backfill this run_label in GHL.</span>';
+  }catch(e){
+    $('msg').innerHTML = '<span class="err">'+e.message+'</span>';
+  }
+}
+</script>
+</body>
+</html>
