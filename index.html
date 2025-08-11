@@ -1,262 +1,264 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Manual Campaign Entry - GTR Core</title>
+  <title>Manual Campaign Entry 1.0 · GTR Core</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #ffffff;
-      color: #000000;
-      margin: 0;
-      padding: 20px;
+    :root { --gap: 14px; --fg:#111; --bg:#fff; --muted:#666; --blue:#1e66f5; --red:#d63939; --green:#117e24; }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}
+    .wrap{max-width:900px;margin:32px auto;padding:0 18px;}
+    h1{font-size:24px;margin:0 0 18px 0}
+    .row{display:flex;gap:var(--gap);align-items:center;margin:10px 0}
+    .col{flex:1}
+    label{display:block;font-weight:600;margin:12px 0 6px}
+    input[type=text], input[type=password], textarea, select {
+      width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:6px; outline:none;
     }
-    .container {
-      max-width: 900px;
-      margin: auto;
-      padding: 24px;
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-    }
-    h1 {
-      font-size: 1.6rem;
-      margin-bottom: 16px;
-    }
-    label {
-      display: block;
-      margin-top: 14px;
-      font-weight: 600;
-    }
-    input, textarea, select, button {
-      width: 100%;
-      padding: 10px;
-      margin-top: 6px;
-      box-sizing: border-box;
-      border: 1px solid #cfd4dc;
-      border-radius: 6px;
-      font-size: 14px;
-    }
-    textarea { resize: vertical; }
-    .row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-    .btns {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 8px;
-      flex-wrap: wrap;
-    }
-    button {
-      background: #0d6efd;
-      color: white;
-      border: none;
-      cursor: pointer;
-      border-radius: 6px;
-      font-weight: 600;
-    }
-    button:hover { background: #0b5ed7; }
-    .ghost { background: #6c757d; }
-    .ghost:hover { background: #5a6268; }
-    .danger { background: #dc3545; }
-    .danger:hover { background: #c82333; }
-    .muted { font-size: 0.92em; color: #555; }
-    .ok { color: #17803d; font-weight: 600; }
-    .err { color: #c40000; font-weight: 600; }
-    .inline { display: inline-flex; align-items: center; gap: 8px; }
+    textarea{min-height:110px; resize:vertical}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px; padding:9px 14px; border-radius:6px; border:1px solid #ddd; background:#f6f6f6; cursor:pointer}
+    .btn.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+    .btn.danger{background:var(--red); border-color:var(--red); color:#fff}
+    .muted{color:var(--muted); font-size:12px}
+    .ok{color:var(--green); font-weight:600}
+    .bar{display:flex;gap:var(--gap);align-items:center}
+    .grow{flex:1}
+    .pill{font-size:12px; padding:3px 8px; background:#eee; border-radius:999px; display:inline-block}
   </style>
 </head>
 <body>
+  <div class="wrap">
+    <h1>Manual Campaign Entry <span class="pill">GTR Core</span></h1>
 
-<div class="container">
-  <h1>Manual Campaign Entry <span class="muted">GTR Core</span></h1>
-
-  <!-- Admin Secret -->
-  <label for="secret">Admin Secret</label>
-  <input id="secret" type="password" placeholder="Paste ADMIN_SECRET (stored locally if you choose)" />
-  <div class="btns">
-    <button type="button" class="ghost" onclick="saveSecret()">Use Secret</button>
-    <label class="muted inline">
-      <input id="remember" type="checkbox" />
-      Remember this device
-    </label>
-    <button type="button" class="danger" onclick="clearSecret()">Clear Secret</button>
-  </div>
-  <div id="msg" class="muted">Required for API calls</div>
-
-  <!-- Client Search + Selected -->
-  <label for="clientSearch">Find Client</label>
-  <input id="clientSearch" placeholder="Search name/email… (min 2 chars)" oninput="searchClients()" />
-
-  <div class="row">
-    <div>
-      <label for="clientSelect">Selected Client</label>
-      <select id="clientSelect">
-        <option value="">Pick from list →</option>
-      </select>
+    <!-- ADMIN SECRET -->
+    <label>Admin Secret</label>
+    <div class="bar">
+      <input id="secret" type="password" placeholder="Paste ADMIN_SECRET (stored on this device if you check remember)" class="grow" />
+      <button class="btn" id="useSecretBtn">Use Secret</button>
+      <button class="btn danger" id="clearSecretBtn">Clear Secret</button>
     </div>
-    <div>
-      <label for="locationId">Location ID</label>
-      <input id="locationId" readonly placeholder="Auto-filled" />
+    <div class="bar" style="margin-top:6px">
+      <label style="display:flex;align-items:center;gap:8px;margin:0">
+        <input type="checkbox" id="rememberSecret" /> Remember this device
+      </label>
+      <div id="secretStatus" class="muted grow"></div>
+    </div>
+
+    <!-- CLIENT PICKER -->
+    <div class="row" style="margin-top:18px">
+      <div class="col">
+        <label>Selected Client</label>
+        <select id="clientSelect">
+          <option value="">Pick from list →</option>
+        </select>
+      </div>
+      <div class="col">
+        <label>Location ID</label>
+        <input id="locationId" type="text" placeholder="Auto-filled" readonly />
+      </div>
+    </div>
+
+    <!-- RUN LABEL -->
+    <div class="row">
+      <div class="col">
+        <label>Run Label</label>
+        <input id="runLabel" type="text" placeholder="e.g. 2025-08-10-newsletter" />
+      </div>
+      <div style="align-self:flex-end">
+        <button class="btn primary" id="suggestBtn">Suggest</button>
+      </div>
+    </div>
+
+    <!-- CAMPAIGN INFO -->
+    <label>Campaign Name</label>
+    <input id="campaignName" type="text" placeholder="Aug 10 Newsletter A" />
+
+    <label>Subject</label>
+    <input id="subject" type="text" placeholder="3 Tips to Boost Leads" />
+
+    <label>Notes</label>
+    <textarea id="notes" placeholder="Imported from GHL raw exports"></textarea>
+
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="saveBtn">Save / Upsert</button>
+      <button class="btn" id="clearBtn">Clear</button>
+      <div id="saveStatus" class="muted"></div>
     </div>
   </div>
-
-  <div class="row">
-    <div>
-      <label for="runLabel">Run Label</label>
-      <input id="runLabel" placeholder="e.g. 2025-08-10-newsletter" />
-    </div>
-    <div style="display:flex;align-items:flex-end;">
-      <button type="button" onclick="suggestRunLabel()">Suggest</button>
-    </div>
-  </div>
-
-  <label for="campaignName">Campaign Name</label>
-  <input id="campaignName" placeholder="Aug 10 Newsletter A" />
-
-  <label for="subject">Subject</label>
-  <input id="subject" placeholder="3 Tips to Boost Leads" />
-
-  <label for="notes">Notes</label>
-  <textarea id="notes" rows="3" placeholder="Imported from GHL raw exports">Imported from GHL raw exports</textarea>
-
-  <div class="btns" style="margin-top:20px;">
-    <button type="button" onclick="saveCampaign()">Save / Upsert</button>
-    <button type="button" class="ghost" onclick="clearForm()">Clear</button>
-  </div>
-</div>
 
 <script>
-/** Set to your deployed Worker URL */
-const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
+  // === CONFIG ===
+  const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
 
-/** Storage Keys for the Admin Secret */
-const SECRET_KEYS = {
-  session: 'gtr_admin_secret',
-  local:   'gtr_admin_secret_persist'
-};
+  // === DOM ===
+  const el = {
+    secret: document.getElementById('secret'),
+    rememberSecret: document.getElementById('rememberSecret'),
+    useSecretBtn: document.getElementById('useSecretBtn'),
+    clearSecretBtn: document.getElementById('clearSecretBtn'),
+    secretStatus: document.getElementById('secretStatus'),
 
-function getStoredSecret() {
-  return localStorage.getItem(SECRET_KEYS.local)
-      || sessionStorage.getItem(SECRET_KEYS.session)
-      || '';
-}
-function setStoredSecret(value, persist) {
-  localStorage.removeItem(SECRET_KEYS.local);
-  sessionStorage.removeItem(SECRET_KEYS.session);
-  if (persist) localStorage.setItem(SECRET_KEYS.local, value);
-  else sessionStorage.setItem(SECRET_KEYS.session, value);
-}
-function saveSecret(){
-  const val = document.getElementById('secret').value.trim();
-  const persist = document.getElementById('remember').checked;
-  const msg = document.getElementById('msg');
-  if (!val) { msg.innerHTML = '<span class="err">Paste your admin secret first.</span>'; return; }
-  setStoredSecret(val, persist);
-  msg.innerHTML = `<span class="ok">Secret saved${persist ? ' (remembered on this device).' : ' for this session.'}</span>`;
-}
-function clearSecret(){
-  localStorage.removeItem(SECRET_KEYS.local);
-  sessionStorage.removeItem(SECRET_KEYS.session);
-  document.getElementById('secret').value = '';
-  document.getElementById('msg').innerHTML = '<span class="ok">Secret cleared.</span>';
-}
+    clientSelect: document.getElementById('clientSelect'),
+    locationId: document.getElementById('locationId'),
 
-/** Use wherever we need auth headers */
-function authHeaders() {
-  const s = getStoredSecret();
-  return { 'X-Admin-Secret': s };
-}
+    runLabel: document.getElementById('runLabel'),
+    suggestBtn: document.getElementById('suggestBtn'),
 
-/** Client search */
-let searchTimer = null;
-async function searchClients(){
-  const q = document.getElementById('clientSearch').value.trim();
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    if (q.length < 2) return;
-    try {
-      const res = await fetch(`${WORKER_BASE}/api/clients?q=${encodeURIComponent(q)}`, { headers: authHeaders() });
-      if (!res.ok) throw new Error(await res.text());
-      const clients = await res.json();
-      const select = document.getElementById('clientSelect');
-      select.innerHTML = '<option value="">Pick from list →</option>';
-      clients.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.location_id;
-        opt.textContent = c.email ? `${c.name} (${c.email})` : c.name;
-        select.appendChild(opt);
-      });
-      select.onchange = () => {
-        document.getElementById('locationId').value = select.value || '';
-      };
-    } catch (e) {
-      alert('Error searching clients: ' + e.message);
-    }
-  }, 250);
-}
+    campaignName: document.getElementById('campaignName'),
+    subject: document.getElementById('subject'),
+    notes: document.getElementById('notes'),
 
-/** Suggest a run label */
-function suggestRunLabel(){
-  const today = new Date().toISOString().slice(0,10);
-  document.getElementById('runLabel').value = `${today}-newsletter`;
-}
-
-/** Save campaign (upsert) */
-async function saveCampaign(){
-  const payload = {
-    location_id: document.getElementById('locationId').value.trim(),
-    run_label: document.getElementById('runLabel').value.trim(),
-    campaign_name: document.getElementById('campaignName').value.trim(),
-    subject: document.getElementById('subject').value.trim(),
-    notes: document.getElementById('notes').value.trim()
+    saveBtn: document.getElementById('saveBtn'),
+    clearBtn: document.getElementById('clearBtn'),
+    saveStatus: document.getElementById('saveStatus'),
   };
-  if (!payload.location_id) return alert('Please select a client (location).');
-  if (!payload.run_label) return alert('Please provide a run label.');
-  try {
-    const res = await fetch(`${WORKER_BASE}/api/campaigns`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) throw new Error(await res.text());
-    alert('Campaign saved!');
-  } catch (e) {
-    alert('Error saving campaign: ' + e.message);
-  }
-}
 
-/** Clear the form */
-function clearForm(){
-  document.getElementById('clientSearch').value = '';
-  document.getElementById('clientSelect').innerHTML = '<option value="">Pick from list →</option>';
-  document.getElementById('locationId').value = '';
-  document.getElementById('runLabel').value = '';
-  document.getElementById('campaignName').value = '';
-  document.getElementById('subject').value = '';
-  document.getElementById('notes').value = 'Imported from GHL raw exports';
-}
-
-/** On load, auto-apply stored secret (no need to click) */
-window.addEventListener('DOMContentLoaded', () => {
-  const sLocal = localStorage.getItem(SECRET_KEYS.local);
-  const sSession = sessionStorage.getItem(SECRET_KEYS.session);
-  const s = sLocal || sSession || '';
-  const msg = document.getElementById('msg');
-  if (s) {
-    // Fill masked and show status
-    document.getElementById('secret').value = '••••••••';
-    if (sLocal) document.getElementById('remember').checked = true;
-    msg.innerHTML = `<span class="ok">Admin secret loaded${sLocal ? ' (remembered on this device).' : ' for this session.'}</span>`;
-  } else {
-    msg.textContent = 'Required for API calls';
+  // === SECRET PERSISTENCE ===
+  function getSecret() {
+    return sessionStorage.getItem('gtr_admin_secret')
+        || localStorage.getItem('gtr_admin_secret')
+        || '';
   }
-});
+  function setSecret(sec, remember) {
+    sessionStorage.removeItem('gtr_admin_secret');
+    localStorage.removeItem('gtr_admin_secret');
+    if (remember) localStorage.setItem('gtr_admin_secret', sec);
+    else sessionStorage.setItem('gtr_admin_secret', sec);
+  }
+  function showSecretStatus(msg, ok=false) {
+    el.secretStatus.textContent = msg;
+    el.secretStatus.className = ok ? 'ok' : 'muted';
+  }
+
+  // === LOAD CLIENTS (all) ===
+  async function loadClients() {
+    const secret = getSecret();
+    if (!secret) { showSecretStatus('Paste admin secret to load clients'); return; }
+
+    el.clientSelect.innerHTML = '<option value="">Loading…</option>';
+    try {
+      const r = await fetch(`${WORKER_BASE}/clients`, {
+        headers: { 'X-Admin-Secret': secret }
+      });
+      if (!r.ok) {
+        const t = await r.text();
+        throw new Error(`clients fetch failed: ${t}`);
+      }
+      const { rows } = await r.json();
+
+      // Build options
+      const opts = ['<option value="">Pick from list →</option>'];
+      rows.forEach(row => {
+        const label =
+          row.business_name?.trim() ||
+          row.full_name?.trim() ||
+          row.email?.trim() ||
+          row.location_id;
+        const extra = row.email ? ` — ${row.email}` : '';
+        opts.push(`<option value="${encodeHTML(row.location_id)}" data-name="${encodeHTML(label)}">${encodeHTML(label)}${encodeHTML(extra)}</option>`);
+      });
+      el.clientSelect.innerHTML = opts.join('');
+      showSecretStatus(`Loaded ${rows.length} clients`, true);
+    } catch (e) {
+      el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
+      alert(e.message || e);
+      showSecretStatus('Failed to load clients');
+    }
+  }
+
+  // === HELPERS ===
+  function encodeHTML(s){ return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function slug(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+
+  // === EVENTS ===
+  el.useSecretBtn.onclick = () => {
+    const sec = el.secret.value.trim();
+    const remember = el.rememberSecret.checked;
+    if (!sec) { alert('Paste ADMIN_SECRET'); return; }
+    setSecret(sec, remember);
+    showSecretStatus('Admin secret loaded' + (remember ? ' (remembered on this device).' : '.'), true);
+    loadClients();
+  };
+  el.clearSecretBtn.onclick = () => {
+    sessionStorage.removeItem('gtr_admin_secret');
+    localStorage.removeItem('gtr_admin_secret');
+    el.secret.value = '';
+    showSecretStatus('Secret cleared');
+    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
+    el.locationId.value = '';
+  };
+
+  // When a client is chosen → fill location_id
+  el.clientSelect.onchange = () => {
+    const loc = el.clientSelect.value || '';
+    el.locationId.value = loc;
+  };
+
+  // Suggest run label
+  el.suggestBtn.onclick = () => {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const base = el.campaignName.value.trim() || el.subject.value.trim() || 'newsletter';
+    el.runLabel.value = `${yyyy}-${mm}-${dd}-${slug(base)}`;
+  };
+
+  // Clear form
+  el.clearBtn.onclick = () => {
+    el.clientSelect.value = '';
+    el.locationId.value = '';
+    el.runLabel.value = '';
+    el.campaignName.value = '';
+    el.subject.value = '';
+    el.notes.value = '';
+    el.saveStatus.textContent = '';
+  };
+
+  // Save / Upsert
+  el.saveBtn.onclick = async () => {
+    const secret = getSecret();
+    if (!secret) { alert('Admin secret required'); return; }
+
+    const location_id = el.locationId.value.trim();
+    const run_label = el.runLabel.value.trim();
+    const campaign_name = el.campaignName.value.trim();
+    const subject = el.subject.value.trim();
+    const notes = el.notes.value.trim();
+
+    if (!location_id) return alert('Pick a client first');
+    if (!run_label) return alert('Run label is required');
+
+    el.saveStatus.textContent = 'Saving…';
+    try {
+      const r = await fetch(`${WORKER_BASE}/campaigns`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Secret': secret
+        },
+        body: JSON.stringify({ location_id, run_label, campaign_name, subject, notes })
+      });
+      const t = await r.text();
+      if (!r.ok) throw new Error(t || 'Save failed');
+      el.saveStatus.textContent = 'Saved ✔';
+      setTimeout(()=> el.saveStatus.textContent='', 2500);
+    } catch (e) {
+      el.saveStatus.textContent = 'Save failed';
+      alert(e.message || e);
+    }
+  };
+
+  // Auto-load secret + clients on first visit if remembered
+  (function init(){
+    const sec = getSecret();
+    if (sec) {
+      el.secret.value = sec;
+      showSecretStatus('Admin secret loaded' + (localStorage.getItem('gtr_admin_secret') ? ' (remembered).' : '.'), true);
+      if (localStorage.getItem('gtr_admin_secret')) el.rememberSecret.checked = true;
+      loadClients();
+    }
+  })();
 </script>
-
 </body>
 </html>
