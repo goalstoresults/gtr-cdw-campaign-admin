@@ -1,186 +1,262 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>GTR · Campaign Registry</title>
-<style>
-  :root{--bg:#0b0f12;--card:#141a1f;--muted:#95a2ad;--accent:#30a46c;--danger:#e5484d;}
-  html,body{background:var(--bg);color:#e6edf3;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0}
-  .wrap{max-width:920px;margin:28px auto;padding:0 16px}
-  .card{background:var(--card);border:1px solid #1f2630;border-radius:14px;padding:20px}
-  h1{font-size:22px;margin:0 0 12px}
-  label{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
-  input,textarea,select{width:100%;background:#0f1418;border:1px solid #2a333c;border-radius:10px;color:#e6edf3;padding:10px 12px;font-size:14px}
-  textarea{min-height:90px}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .btns{display:flex;gap:10px;margin-top:16px}
-  button{border:0;border-radius:10px;padding:10px 14px;font-weight:600;cursor:pointer}
-  .primary{background:var(--accent);color:#08130e}
-  .ghost{background:#0f1418;color:#e6edf3;border:1px solid #2a333c}
-  .danger{background:var(--danger)}
-  .muted{color:var(--muted)}
-  .pill{display:inline-block;background:#0f1418;border:1px solid #2a333c;border-radius:999px;padding:6px 10px;font-size:12px}
-  .list{margin:8px 0;max-height:260px;overflow:auto;border:1px solid #2a333c;border-radius:10px}
-  .item{padding:10px 12px;border-bottom:1px solid #1f2630;cursor:pointer}
-  .item:hover{background:#0f1418}
-  .ok{color:#34d399}
-  .err{color:#fca5a5}
-  .grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
-  @media (max-width:880px){.grid{grid-template-columns:1fr}}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manual Campaign Entry - GTR Core</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #ffffff;
+      color: #000000;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      padding: 24px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      margin-top: 14px;
+      font-weight: 600;
+    }
+    input, textarea, select, button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      box-sizing: border-box;
+      border: 1px solid #cfd4dc;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    textarea { resize: vertical; }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .btns {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+    button {
+      background: #0d6efd;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    button:hover { background: #0b5ed7; }
+    .ghost { background: #6c757d; }
+    .ghost:hover { background: #5a6268; }
+    .danger { background: #dc3545; }
+    .danger:hover { background: #c82333; }
+    .muted { font-size: 0.92em; color: #555; }
+    .ok { color: #17803d; font-weight: 600; }
+    .err { color: #c40000; font-weight: 600; }
+    .inline { display: inline-flex; align-items: center; gap: 8px; }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="card">
-    <h1>Manual Campaign Entry <span class="pill">GTR Core</span></h1>
-    <div class="grid">
-      <div>
-        <label>Admin Secret</label>
-        <input id="secret" type="password" placeholder="Paste ADMIN_SECRET (stored in session only)" />
-        <div class="btns">
-          <button class="ghost" onclick="saveSecret()">Use Secret</button>
-          <span class="muted">Required for API calls</span>
-        </div>
 
-        <label style="margin-top:18px;">Find Client</label>
-        <input id="q" placeholder="Search name/email… (min 2 chars)" oninput="debouncedSearch()" />
-        <div id="list" class="list" hidden></div>
-      </div>
+<div class="container">
+  <h1>Manual Campaign Entry <span class="muted">GTR Core</span></h1>
 
-      <div>
-        <label>Selected Client</label>
-        <input id="client_display" placeholder="Pick from list →" disabled />
+  <!-- Admin Secret -->
+  <label for="secret">Admin Secret</label>
+  <input id="secret" type="password" placeholder="Paste ADMIN_SECRET (stored locally if you choose)" />
+  <div class="btns">
+    <button type="button" class="ghost" onclick="saveSecret()">Use Secret</button>
+    <label class="muted inline">
+      <input id="remember" type="checkbox" />
+      Remember this device
+    </label>
+    <button type="button" class="danger" onclick="clearSecret()">Clear Secret</button>
+  </div>
+  <div id="msg" class="muted">Required for API calls</div>
 
-        <label>Location ID</label>
-        <input id="location_id" placeholder="Auto-filled" />
+  <!-- Client Search + Selected -->
+  <label for="clientSearch">Find Client</label>
+  <input id="clientSearch" placeholder="Search name/email… (min 2 chars)" oninput="searchClients()" />
 
-        <div class="row">
-          <div>
-            <label>Run Label</label>
-            <input id="run_label" placeholder="e.g. 2025-08-10-newsletter-a" />
-          </div>
-          <div>
-            <label>Suggest Run Label</label>
-            <button class="ghost" onclick="suggestLabel()">Suggest</button>
-          </div>
-        </div>
-
-        <label>Campaign Name</label>
-        <input id="campaign_name" placeholder="Aug 10 Newsletter A" />
-
-        <label>Subject</label>
-        <input id="subject" placeholder="3 Tips to Boost Leads" />
-
-        <label>Notes</label>
-        <textarea id="notes" placeholder="Imported from GHL raw exports"></textarea>
-
-        <div class="btns">
-          <button class="primary" onclick="save()">Save / Upsert</button>
-          <button class="ghost" onclick="clearForm()">Clear</button>
-        </div>
-
-        <div id="msg" class="muted" style="margin-top:10px"></div>
-      </div>
+  <div class="row">
+    <div>
+      <label for="clientSelect">Selected Client</label>
+      <select id="clientSelect">
+        <option value="">Pick from list →</option>
+      </select>
     </div>
+    <div>
+      <label for="locationId">Location ID</label>
+      <input id="locationId" readonly placeholder="Auto-filled" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div>
+      <label for="runLabel">Run Label</label>
+      <input id="runLabel" placeholder="e.g. 2025-08-10-newsletter" />
+    </div>
+    <div style="display:flex;align-items:flex-end;">
+      <button type="button" onclick="suggestRunLabel()">Suggest</button>
+    </div>
+  </div>
+
+  <label for="campaignName">Campaign Name</label>
+  <input id="campaignName" placeholder="Aug 10 Newsletter A" />
+
+  <label for="subject">Subject</label>
+  <input id="subject" placeholder="3 Tips to Boost Leads" />
+
+  <label for="notes">Notes</label>
+  <textarea id="notes" rows="3" placeholder="Imported from GHL raw exports">Imported from GHL raw exports</textarea>
+
+  <div class="btns" style="margin-top:20px;">
+    <button type="button" onclick="saveCampaign()">Save / Upsert</button>
+    <button type="button" class="ghost" onclick="clearForm()">Clear</button>
   </div>
 </div>
 
 <script>
-/** ====== CONFIG ====== **/
-const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev'; // <-- CHANGE THIS
+/** Set to your deployed Worker URL */
+const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
 
-/** ====== UTIL ====== **/
-const $ = id => document.getElementById(id);
-const API = {
-  async getClients(q){
-    const r = await fetch(`${WORKER_BASE}/api/clients?q=${encodeURIComponent(q)}`, {
-      headers: { 'X-Admin-Secret': sessionStorage.getItem('gtr_admin_secret')||'' }
-    });
-    if(!r.ok) throw new Error(await r.text());
-    return r.json();
-  },
-  async saveCampaign(payload){
-    const r = await fetch(`${WORKER_BASE}/api/campaigns`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': sessionStorage.getItem('gtr_admin_secret')||'' },
-      body: JSON.stringify(payload)
-    });
-    if(!r.ok) throw new Error(await r.text());
-    return r.json();
-  }
+/** Storage Keys for the Admin Secret */
+const SECRET_KEYS = {
+  session: 'gtr_admin_secret',
+  local:   'gtr_admin_secret_persist'
 };
 
+function getStoredSecret() {
+  return localStorage.getItem(SECRET_KEYS.local)
+      || sessionStorage.getItem(SECRET_KEYS.session)
+      || '';
+}
+function setStoredSecret(value, persist) {
+  localStorage.removeItem(SECRET_KEYS.local);
+  sessionStorage.removeItem(SECRET_KEYS.session);
+  if (persist) localStorage.setItem(SECRET_KEYS.local, value);
+  else sessionStorage.setItem(SECRET_KEYS.session, value);
+}
 function saveSecret(){
-  const val = $('secret').value.trim();
-  if(!val){ $('msg').innerHTML = '<span class="err">Paste your admin secret first.</span>'; return; }
-  sessionStorage.setItem('gtr_admin_secret', val);
-  $('msg').innerHTML = '<span class="ok">Secret saved for this tab.</span>';
+  const val = document.getElementById('secret').value.trim();
+  const persist = document.getElementById('remember').checked;
+  const msg = document.getElementById('msg');
+  if (!val) { msg.innerHTML = '<span class="err">Paste your admin secret first.</span>'; return; }
+  setStoredSecret(val, persist);
+  msg.innerHTML = `<span class="ok">Secret saved${persist ? ' (remembered on this device).' : ' for this session.'}</span>`;
+}
+function clearSecret(){
+  localStorage.removeItem(SECRET_KEYS.local);
+  sessionStorage.removeItem(SECRET_KEYS.session);
+  document.getElementById('secret').value = '';
+  document.getElementById('msg').innerHTML = '<span class="ok">Secret cleared.</span>';
 }
 
-let t=null;
-async function debouncedSearch(){
-  const q = $('q').value.trim();
-  if(q.length<2){ $('list').hidden=true; $('list').innerHTML=''; return; }
-  clearTimeout(t);
-  t = setTimeout(async ()=>{
-    try{
-      const res = await API.getClients(q);
-      $('list').innerHTML = (res||[]).slice(0,100).map(c => {
-        const name = c.business_name || c.full_name || '(no name)';
-        const email = c.email || '';
-        const payload = encodeURIComponent(JSON.stringify(c));
-        return `<div class="item" onclick='chooseClient(decodeURIComponent("${payload}"))'>
-          <b>${name}</b> <span class="muted">(${email})</span><br>
-          <span class="muted">loc:</span> ${c.location_id||'-'}
-        </div>`;
-      }).join('') || '<div class="item muted">No results</div>';
-      $('list').hidden = false;
-    }catch(e){
-      $('msg').innerHTML = '<span class="err">'+e.message+'</span>';
+/** Use wherever we need auth headers */
+function authHeaders() {
+  const s = getStoredSecret();
+  return { 'X-Admin-Secret': s };
+}
+
+/** Client search */
+let searchTimer = null;
+async function searchClients(){
+  const q = document.getElementById('clientSearch').value.trim();
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    if (q.length < 2) return;
+    try {
+      const res = await fetch(`${WORKER_BASE}/api/clients?q=${encodeURIComponent(q)}`, { headers: authHeaders() });
+      if (!res.ok) throw new Error(await res.text());
+      const clients = await res.json();
+      const select = document.getElementById('clientSelect');
+      select.innerHTML = '<option value="">Pick from list →</option>';
+      clients.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.location_id;
+        opt.textContent = c.email ? `${c.name} (${c.email})` : c.name;
+        select.appendChild(opt);
+      });
+      select.onchange = () => {
+        document.getElementById('locationId').value = select.value || '';
+      };
+    } catch (e) {
+      alert('Error searching clients: ' + e.message);
     }
   }, 250);
 }
 
-function chooseClient(jsonStr){
-  const c = JSON.parse(jsonStr);
-  $('client_display').value = (c.business_name || c.full_name || '(no name)') + (c.email ? '  ·  '+c.email : '');
-  $('location_id').value = c.location_id || '';
-  $('list').hidden = true; $('list').innerHTML = '';
+/** Suggest a run label */
+function suggestRunLabel(){
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('runLabel').value = `${today}-newsletter`;
 }
 
-function slugify(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40); }
-function suggestLabel(){
-  const d = new Date();
-  const iso = d.toISOString().slice(0,10); // YYYY-MM-DD
-  const base = slugify($('campaign_name').value) || 'campaign';
-  $('run_label').value = iso + '-' + base;
-}
-
-function clearForm(){
-  ['client_display','location_id','run_label','campaign_name','subject','notes'].forEach(id => $(id).value='');
-  $('q').value=''; $('list').innerHTML=''; $('list').hidden=true; $('msg').innerHTML='';
-}
-
-async function save(){
+/** Save campaign (upsert) */
+async function saveCampaign(){
   const payload = {
-    location_id: $('location_id').value.trim(),
-    run_label: $('run_label').value.trim(),
-    campaign_name: $('campaign_name').value.trim() || null,
-    subject: $('subject').value.trim() || null,
-    notes: $('notes').value.trim() || null
+    location_id: document.getElementById('locationId').value.trim(),
+    run_label: document.getElementById('runLabel').value.trim(),
+    campaign_name: document.getElementById('campaignName').value.trim(),
+    subject: document.getElementById('subject').value.trim(),
+    notes: document.getElementById('notes').value.trim()
   };
-  if(!payload.location_id || !payload.run_label){
-    $('msg').innerHTML = '<span class="err">location_id and run_label are required.</span>';
-    return;
-  }
-  try{
-    await API.saveCampaign(payload);
-    $('msg').innerHTML = '<span class="ok">Saved. You can now backfill this run_label in GHL.</span>';
-  }catch(e){
-    $('msg').innerHTML = '<span class="err">'+e.message+'</span>';
+  if (!payload.location_id) return alert('Please select a client (location).');
+  if (!payload.run_label) return alert('Please provide a run label.');
+  try {
+    const res = await fetch(`${WORKER_BASE}/api/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    alert('Campaign saved!');
+  } catch (e) {
+    alert('Error saving campaign: ' + e.message);
   }
 }
+
+/** Clear the form */
+function clearForm(){
+  document.getElementById('clientSearch').value = '';
+  document.getElementById('clientSelect').innerHTML = '<option value="">Pick from list →</option>';
+  document.getElementById('locationId').value = '';
+  document.getElementById('runLabel').value = '';
+  document.getElementById('campaignName').value = '';
+  document.getElementById('subject').value = '';
+  document.getElementById('notes').value = 'Imported from GHL raw exports';
+}
+
+/** On load, auto-apply stored secret (no need to click) */
+window.addEventListener('DOMContentLoaded', () => {
+  const sLocal = localStorage.getItem(SECRET_KEYS.local);
+  const sSession = sessionStorage.getItem(SECRET_KEYS.session);
+  const s = sLocal || sSession || '';
+  const msg = document.getElementById('msg');
+  if (s) {
+    // Fill masked and show status
+    document.getElementById('secret').value = '••••••••';
+    if (sLocal) document.getElementById('remember').checked = true;
+    msg.innerHTML = `<span class="ok">Admin secret loaded${sLocal ? ' (remembered on this device).' : ' for this session.'}</span>`;
+  } else {
+    msg.textContent = 'Required for API calls';
+  }
+});
 </script>
+
 </body>
 </html>
