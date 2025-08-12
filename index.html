@@ -1,494 +1,335 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Campaign Manager · GTR Core</title>
-  <style>
-    :root { --gap: 14px; --fg:#111; --bg:#fff; --muted:#666; --blue:#1e66f5; --red:#d63939; --green:#117e24; }
-    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}
-    .wrap{max-width:900px;margin:32px auto;padding:0 18px;}
-    h1{font-size:24px;margin:0 0 18px 0}
-    .row{display:flex;gap:var(--gap);align-items:center;margin:10px 0}
-    .col{flex:1}
-    label{display:block;font-weight:600;margin:12px 0 6px}
-    input[type=text], input[type=password], input[type=datetime-local], textarea, select {
-      width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:6px; outline:none;
-    }
-    textarea{min-height:110px; resize:vertical}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px; padding:9px 14px; border-radius:6px; border:1px solid #ddd; background:#f6f6f6; cursor:pointer}
-    .btn.primary{background:var(--blue); border-color:var(--blue); color:#fff}
-    .btn.danger{background:var(--red); border-color:var(--red); color:#fff}
-    .muted{color:var(--muted); font-size:12px}
-    .ok{color:var(--green); font-weight:600}
-    .bar{display:flex;gap:var(--gap);align-items:center}
-    .grow{flex:1}
-    .pill{font-size:12px; padding:3px 8px; background:#eee; border-radius:999px; display:inline-block}
-    .hidden{display:none;}
-    hr{border:none;border-top:1px solid #ddd;margin:20px 0;}
-    progress{height:12px; width:100%}
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <h1>Campaign Manager 2.0 <span class="pill">GTR Core</span></h1>
+// GTR Core - Campaign Manager Worker (Supabase) + CSV Events Import + historical dates + GHL-export fallback map
 
-  <!-- ADMIN SECRET -->
-  <label>Admin Secret</label>
-  <div class="bar">
-    <input id="secret" type="password" placeholder="Paste ADMIN_SECRET" class="grow" />
-    <button class="btn" id="useSecretBtn">Use Secret</button>
-    <button class="btn danger" id="clearSecretBtn">Clear Secret</button>
-  </div>
-  <div class="bar" style="margin-top:6px">
-    <label style="display:flex;align-items:center;gap:8px;margin:0">
-      <input type="checkbox" id="rememberSecret" /> Remember this device
-    </label>
-    <div id="secretStatus" class="muted grow"></div>
-  </div>
-
-  <!-- CLIENT PICKER -->
-  <hr>
-  <label>Select Client</label>
-  <select id="clientSelect">
-    <option value="">Pick from list →</option>
-  </select>
-  <label>Location ID</label>
-  <input id="locationId" type="text" readonly />
-
-  <!-- CAMPAIGN SECTION -->
-  <hr>
-  <div id="campaignSection" class="hidden">
-    <h2>Campaigns</h2>
-    <label>Choose Existing Campaign</label>
-    <select id="campaignSelect">
-      <option value="">Pick from list →</option>
-    </select>
-    <div style="margin-top:10px;">Campaign ID: <span id="campaignIdDisplay">—</span></div>
-
-    <h3 style="margin-top:20px;">Or Add New Campaign</h3>
-    <label>Campaign Name</label>
-    <input id="campaignName" type="text" placeholder="Workflow or Newsletter Name" />
-
-    <label>Description</label>
-    <input id="campaignDescription" type="text" placeholder="Optional description" />
-
-    <label>Notes</label>
-    <textarea id="campaignNotes" placeholder="Optional notes"></textarea>
-
-    <label>Campaign Created Date (optional)</label>
-    <input id="campaignCreatedAt" type="datetime-local" />
-
-    <div class="row" style="margin-top:10px">
-      <button class="btn primary" id="addCampaignBtn">Add Campaign</button>
-    </div>
-    <div id="campaignStatus" class="muted"></div>
-  </div>
-
-  <!-- RUNS SECTION -->
-  <hr>
-  <div id="runSection" class="hidden">
-    <h2>Runs for Selected Campaign</h2>
-
-    <!-- Selected Client & Campaign Info -->
-    <div style="margin-bottom:10px;">
-      <strong>Client ID:</strong> <span id="runClientId">—</span><br>
-      <strong>Campaign:</strong> <span id="runCampaignId">—</span> - <span id="runCampaignName">—</span>
-    </div>
-
-    <div id="runsList" class="muted" style="margin-bottom:10px;">No runs yet.</div>
-
-    <!-- Choose run for uploads -->
-    <label>Choose Run for Upload</label>
-    <select id="runSelect">
-      <option value="">Pick a run →</option>
-    </select>
-
-    <h3 style="margin-top:20px;">Add New Run</h3>
-    <label>Run Label</label>
-    <input id="runLabel" type="text" placeholder="e.g. 2025-08-10-newsletter" />
-
-    <label>Subject</label>
-    <input id="subject" type="text" placeholder="Email subject line" />
-
-    <label>Notes</label>
-    <textarea id="notes" placeholder="Optional notes"></textarea>
-
-    <label>Run Created/Sent Date (optional)</label>
-    <input id="runCreatedAt" type="datetime-local" />
-
-    <div class="row" style="margin-top:16px">
-      <button class="btn primary" id="saveRunBtn">Save Run</button>
-    </div>
-    <div style="margin-top:10px;">Run ID: <span id="runIdDisplay">—</span></div>
-    <div id="runStatus" class="muted"></div>
-
-    <hr>
-
-    <!-- BULK UPLOAD -->
-    <h2>Bulk Upload Events (CSV)</h2>
-    <div class="muted" style="margin-bottom:8px;">
-      Required headers: <code>email</code>, <code>event_type</code>. Optional: <code>contact_id</code>, <code>first_name</code>, <code>last_name</code>, <code>event_timestamp</code>, <code>link_url</code>, <code>message_id</code>.
-    </div>
-    <input id="csvFile" type="file" accept=".csv" />
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="parseBtn">Parse CSV</button>
-      <div id="csvStatus" class="muted"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn primary" id="uploadBtn">Upload to Selected Run</button>
-      <div id="uploadStatus" class="muted"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <progress id="uploadProgressBar" value="0" max="100" style="width:100%"></progress>
-      <div id="uploadProgressText" class="muted" style="min-width:120px;text-align:right;"></div>
-    </div>
-  </div>
-</div>
-
-<script>
-const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
-const el = {
-  secret: document.getElementById('secret'),
-  rememberSecret: document.getElementById('rememberSecret'),
-  useSecretBtn: document.getElementById('useSecretBtn'),
-  clearSecretBtn: document.getElementById('clearSecretBtn'),
-  secretStatus: document.getElementById('secretStatus'),
-
-  clientSelect: document.getElementById('clientSelect'),
-  locationId: document.getElementById('locationId'),
-
-  campaignSection: document.getElementById('campaignSection'),
-  campaignSelect: document.getElementById('campaignSelect'),
-  campaignName: document.getElementById('campaignName'),
-  campaignDescription: document.getElementById('campaignDescription'),
-  campaignNotes: document.getElementById('campaignNotes'),
-  campaignCreatedAt: document.getElementById('campaignCreatedAt'),
-  addCampaignBtn: document.getElementById('addCampaignBtn'),
-  campaignStatus: document.getElementById('campaignStatus'),
-  campaignIdDisplay: document.getElementById('campaignIdDisplay'),
-
-  runSection: document.getElementById('runSection'),
-  runClientId: document.getElementById('runClientId'),
-  runCampaignId: document.getElementById('runCampaignId'),
-  runCampaignName: document.getElementById('runCampaignName'),
-  runsList: document.getElementById('runsList'),
-  runLabel: document.getElementById('runLabel'),
-  subject: document.getElementById('subject'),
-  notes: document.getElementById('notes'),
-  runCreatedAt: document.getElementById('runCreatedAt'),
-  saveRunBtn: document.getElementById('saveRunBtn'),
-  runStatus: document.getElementById('runStatus'),
-  runIdDisplay: document.getElementById('runIdDisplay'),
-
-  runSelect: document.getElementById('runSelect'),
-  csvFile: document.getElementById('csvFile'),
-  parseBtn: document.getElementById('parseBtn'),
-  csvStatus: document.getElementById('csvStatus'),
-  uploadBtn: document.getElementById('uploadBtn'),
-  uploadStatus: document.getElementById('uploadStatus'),
-  uploadProgressBar: document.getElementById('uploadProgressBar'),
-  uploadProgressText: document.getElementById('uploadProgressText'),
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Secret",
 };
 
-function getSecret() {
-  return sessionStorage.getItem('gtr_admin_secret')
-      || localStorage.getItem('gtr_admin_secret')
-      || '';
-}
-function setSecret(sec, remember) {
-  sessionStorage.removeItem('gtr_admin_secret');
-  localStorage.removeItem('gtr_admin_secret');
-  if (remember) localStorage.setItem('gtr_admin_secret', sec);
-  else sessionStorage.setItem('gtr_admin_secret', sec);
-}
-function showSecretStatus(msg, ok=false) {
-  el.secretStatus.textContent = msg;
-  el.secretStatus.className = ok ? 'ok' : 'muted';
+const json = (data, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+
+const err = (message, status = 400, detail) =>
+  json({ error: message, detail }, status);
+
+function needEnv(env) {
+  const miss = [];
+  if (!env.SUPABASE_URL?.startsWith("https://")) miss.push("SUPABASE_URL");
+  if (!env.SUPABASE_SERVICE_ROLE) miss.push("SUPABASE_SERVICE_ROLE");
+  if (!env.ADMIN_SECRET) miss.push("ADMIN_SECRET");
+  return miss;
 }
 
-async function loadClients() {
-  const secret = getSecret();
-  if (!secret) { showSecretStatus('Paste admin secret'); return; }
-  el.clientSelect.innerHTML = '<option>Loading…</option>';
-  try {
-    const r = await fetch(`${WORKER_BASE}/clients`, { headers: { 'X-Admin-Secret': secret }});
-    const { rows } = await r.json();
-    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>' +
-      rows.map(row => `<option value="${row.location_id}">${row.business_name||row.full_name||row.email}</option>`).join('');
-    showSecretStatus(`Loaded ${rows.length} clients`, true);
-  } catch (e) {
-    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
-    showSecretStatus('Failed to load clients');
-  }
-}
-
-async function loadCampaigns(locationId) {
-  const secret = getSecret();
-  el.campaignSelect.innerHTML = '<option>Loading…</option>';
-  try {
-    const r = await fetch(`${WORKER_BASE}/campaigns?location_id=${encodeURIComponent(locationId)}`, { headers: { 'X-Admin-Secret': secret }});
-    const { rows } = await r.json();
-    el.campaignSelect.innerHTML = '<option value="">Pick from list →</option>' +
-      rows.map(row => `<option value="${row.campaign_id}">${row.campaign_name}</option>`).join('');
-  } catch (e) {
-    el.campaignSelect.innerHTML = '<option value="">Pick from list →</option>';
-  }
-}
-
-async function loadRuns(campaignId) {
-  const secret = getSecret();
-  try {
-    const r = await fetch(`${WORKER_BASE}/runs?campaign_id=${campaignId}`, { headers: { 'X-Admin-Secret': secret }});
-    const { rows } = await r.json();
-
-    // list
-    el.runsList.innerHTML = rows.length ? rows.map(rn => `${rn.run_id}: ${rn.run_label}`).join('<br>') : 'No runs yet.';
-
-    // upload dropdown
-    el.runSelect.innerHTML = '<option value="">Pick a run →</option>' +
-      rows.map(rn => `<option value="${rn.run_id}">${rn.run_id} — ${rn.run_label}</option>`).join('');
-  } catch (e) {
-    el.runsList.textContent = 'Error loading runs';
-    el.runSelect.innerHTML = '<option value="">Pick a run →</option>';
-  }
-}
-
-// EVENT: use secret
-el.useSecretBtn.onclick = () => {
-  const sec = el.secret.value.trim();
-  if (!sec) return alert('Paste ADMIN_SECRET');
-  setSecret(sec, el.rememberSecret.checked);
-  showSecretStatus('Admin secret loaded', true);
-  loadClients();
-};
-el.clearSecretBtn.onclick = () => {
-  sessionStorage.removeItem('gtr_admin_secret');
-  localStorage.removeItem('gtr_admin_secret');
-  el.secret.value = '';
-  showSecretStatus('Secret cleared');
-};
-
-// EVENT: client chosen
-el.clientSelect.onchange = () => {
-  el.locationId.value = el.clientSelect.value || '';
-  if (el.clientSelect.value) {
-    el.campaignSection.classList.remove('hidden');
-    loadCampaigns(el.clientSelect.value);
-  } else {
-    el.campaignSection.classList.add('hidden');
-    el.runSection.classList.add('hidden');
-  }
-};
-
-// EVENT: campaign chosen
-el.campaignSelect.onchange = () => {
-  const cid = el.campaignSelect.value;
-  if (cid) {
-    el.campaignIdDisplay.textContent = cid;
-    el.runClientId.textContent = el.locationId.value || '—';
-    el.runCampaignId.textContent = cid;
-    el.runCampaignName.textContent = el.campaignSelect.options[el.campaignSelect.selectedIndex].text || '—';
-    el.runSection.classList.remove('hidden');
-    loadRuns(cid);
-  } else {
-    el.campaignIdDisplay.textContent = '—';
-    el.runClientId.textContent = '—';
-    el.runCampaignId.textContent = '—';
-    el.runCampaignName.textContent = '—';
-    el.runSection.classList.add('hidden');
-  }
-};
-
-// EVENT: add campaign
-el.addCampaignBtn.onclick = async () => {
-  const secret = getSecret();
-  const location_id = el.locationId.value;
-  const campaign_name = el.campaignName.value.trim();
-  const description = el.campaignDescription.value.trim();
-  const notes = el.campaignNotes.value.trim();
-
-  // convert datetime-local to ISO (or blank)
-  const created_local = el.campaignCreatedAt.value;
-  const created_at = created_local ? new Date(created_local).toISOString() : '';
-
-  if (!campaign_name) return alert('Campaign name required');
-  try {
-    const r = await fetch(`${WORKER_BASE}/campaigns`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
-      body: JSON.stringify({ location_id, campaign_name, description, notes, created_at })
-    });
-    const { campaign_id, warn } = await r.json();
-    el.campaignStatus.textContent = warn ? `Campaign added ✔ (note: ${warn})` : 'Campaign added ✔';
-    el.campaignIdDisplay.textContent = campaign_id;
-    el.campaignName.value = '';
-    el.campaignDescription.value = '';
-    el.campaignNotes.value = '';
-    el.campaignCreatedAt.value = '';
-    loadCampaigns(location_id);
-  } catch (e) {
-    el.campaignStatus.textContent = 'Error adding campaign';
-  }
-};
-
-// EVENT: save run
-el.saveRunBtn.onclick = async () => {
-  const secret = getSecret();
-  const campaign_id = el.campaignSelect.value;
-  const run_label = el.runLabel.value.trim();
-  const subject = el.subject.value.trim();
-  const notes = el.notes.value.trim();
-
-  const run_created_local = el.runCreatedAt.value;
-  const run_created_at = run_created_local ? new Date(run_created_local).toISOString() : '';
-
-  if (!campaign_id) return alert('Pick a campaign first');
-  if (!run_label)   return alert('Run label required');
-  try {
-    const r = await fetch(`${WORKER_BASE}/runs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
-      body: JSON.stringify({ campaign_id, run_label, subject, notes, run_created_at })
-    });
-    const { run_id } = await r.json();
-    el.runStatus.textContent = 'Run saved ✔';
-    el.runIdDisplay.textContent = run_id;
-    el.runLabel.value = '';
-    el.subject.value = '';
-    el.notes.value = '';
-    el.runCreatedAt.value = '';
-    loadRuns(campaign_id);
-  } catch (e) {
-    el.runStatus.textContent = 'Error saving run';
-  }
-};
-
-// --- Tiny CSV parser (handles quotes and commas) ---
-function parseCSV(text) {
-  const rows = [];
-  let i = 0, field = "", row = [], inQuotes = false;
-
-  function endField() { row.push(field); field = ""; }
-  function endRow() { rows.push(row); row = []; }
-
-  while (i < text.length) {
-    const c = text[i++];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i] === '"') { field += '"'; i++; } // escaped quote
-        else inQuotes = false;
-      } else field += c;
-    } else {
-      if (c === '"') inQuotes = true;
-      else if (c === ',') endField();
-      else if (c === '\n') { endField(); endRow(); }
-      else if (c === '\r') { /* ignore */ }
-      else field += c;
-    }
-  }
-  endField();
-  if (row.length > 1 || (row.length === 1 && row[0] !== "")) endRow();
-
-  const header = rows.shift().map(h => h.trim().toLowerCase());
-  return rows.map(r => {
-    const obj = {};
-    for (let j = 0; j < header.length; j++) obj[header[j]] = (r[j] ?? "").trim();
-    return obj;
+async function sfetch(env, pathWithQuery, init = {}) {
+  const url = `${env.SUPABASE_URL}/rest/v1/${pathWithQuery}`;
+  return fetch(url, {
+    ...init,
+    headers: {
+      "apikey": env.SUPABASE_SERVICE_ROLE,
+      "Authorization": `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
+      ...(init.headers || {}),
+    },
   });
 }
 
-let parsedCSVRows = [];
+function normType(t) {
+  if (!t) return null;
+  const s = String(t).toLowerCase().replace(/[\s_-]+/g, "");
+  if (["delivered","delivery","send","sent"].some(x => s.includes(x))) return "sent";
+  if (["open","opened"].some(x => s.includes(x))) return "opened";
+  if (["click","clicked"].some(x => s.includes(x))) return "clicked";
+  if (["bounce","bounced","hardbounce","softbounce"].some(x => s.includes(x))) return "bounced";
+  if (["complaint","spam"].some(x => s.includes(x))) return "spam";
+  if (["unsub","unsubscribe","unsubscribed"].some(x => s.includes(x))) return "unsubscribed";
+  if (["drop","dropped","skip","skipped"].some(x => s.includes(x))) return "dropped";
+  if (["defer","deferred"].some(x => s.includes(x))) return "deferred";
+  return String(t).toLowerCase();
+}
 
-// Parse CSV
-el.parseBtn.onclick = async () => {
-  el.csvStatus.textContent = '';
-  parsedCSVRows = [];
-  const f = el.csvFile.files?.[0];
-  if (!f) { el.csvStatus.textContent = 'Choose a CSV file first'; return; }
+// Server-side fallback for GHL 4-col export rows (if UI ever changes)
+function mapServerSideRowFallback(row) {
+  // If row has the 4 GHL headers exactly, remap
+  const keys = Object.keys(row).map(k => k.toLowerCase().trim());
+  const isGhl =
+    keys.includes("contact name") &&
+    keys.includes("email") &&
+    keys.includes("status") &&
+    keys.includes("updated at");
 
-  const txt = await f.text();
-  try {
-    const rows = parseCSV(txt);
-    if (!rows.length) { el.csvStatus.textContent = 'No rows found'; return; }
+  if (!isGhl) return null;
 
-    const first = rows[0];
-    if (!('email' in first) || !('event_type' in first)) {
-      el.csvStatus.textContent = 'CSV must include headers: email, event_type';
-      return;
-    }
-    parsedCSVRows = rows;
-    el.csvStatus.textContent = `Parsed ${rows.length} rows ✅`;
-  } catch (e) {
-    el.csvStatus.textContent = 'Parse error';
-    alert(e.message || e);
-  }
-};
+  const fullName = row["contact name"] || "";
+  const email    = row["email"] || "";
+  const status   = row["status"] || "";
+  const updated  = row["updated at"] || "";
 
-// Upload in batches to /events_import
-el.uploadBtn.onclick = async () => {
-  el.uploadStatus.textContent = '';
-  const secret = getSecret();
-  const campaign_id = el.campaignSelect.value;
-  const run_id = el.runSelect.value;
+  const parts = (fullName || "").trim().split(/\s+/);
+  const last = parts.length > 1 ? parts.pop() : "";
+  const first = parts.join(" ");
 
-  if (!campaign_id) return alert('Pick a campaign first');
-  if (!run_id)      return alert('Pick a run for upload');
-  if (!parsedCSVRows.length) return alert('Parse a CSV first');
+  const type = normType(status);
+  const ts   = updated ? new Date(updated).toISOString() : new Date().toISOString();
 
-  const batchSize = 500;
-  const total = parsedCSVRows.length;
-  let sent = 0;
-  let batchesOk = 0;
+  return {
+    email,
+    event_type: type || "sent",
+    first_name: first || null,
+    last_name: last || null,
+    event_timestamp: ts
+  };
+}
 
-  el.uploadProgressBar.value = 0;
-  el.uploadProgressText.textContent = '';
-  el.uploadStatus.textContent = 'Uploading…';
+export default {
+  async fetch(req, env) {
+    try {
+      if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
-  try {
-    for (let i = 0; i < total; i += batchSize) {
-      const chunk = parsedCSVRows.slice(i, i + batchSize);
-      const r = await fetch(`${WORKER_BASE}/events_import`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Secret': secret
-        },
-        body: JSON.stringify({
-          campaign_id: Number(campaign_id),
-          run_id: Number(run_id),
-          rows: chunk
-        })
-      });
+      const miss = needEnv(env);
+      if (miss.length) return err(`Missing env: ${miss.join(", ")}`, 500);
 
-      const resp = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        const msg = resp?.detail || resp?.error || `Batch ${batchesOk + 1} failed`;
-        throw new Error(msg);
+      const admin = req.headers.get("X-Admin-Secret");
+      if (admin !== env.ADMIN_SECRET) return err("Unauthorized", 401);
+
+      const url = new URL(req.url);
+      const { pathname, searchParams } = url;
+
+      // Health
+      if (req.method === "GET" && pathname === "/health") {
+        return json({ ok: true, ts: new Date().toISOString() });
       }
-      sent += chunk.length;
-      batchesOk += 1;
-      const pct = Math.round((sent / total) * 100);
-      el.uploadProgressBar.value = pct;
-      el.uploadProgressText.textContent = `${sent}/${total} (${pct}%)`;
-    }
 
-    el.uploadStatus.textContent = `Uploaded ${sent} events in ${batchesOk} batch(es) ✔`;
-  } catch (e) {
-    el.uploadStatus.textContent = 'Upload failed';
-    alert(e.message || e);
-  }
+      // Clients list
+      if (req.method === "GET" && pathname === "/clients") {
+        const r = await sfetch(
+          env,
+          `clients?select=location_id,business_name,full_name,email&order=business_name.asc,full_name.asc&limit=1000`,
+          { method: "GET" }
+        );
+        if (!r.ok) return err("clients fetch failed", r.status, await r.text());
+        const rows = await r.json();
+        return json({ rows });
+      }
+
+      // Campaigns by client
+      if (req.method === "GET" && pathname === "/campaigns") {
+        const location_id = searchParams.get("location_id") || "";
+        if (!location_id) return err("location_id required");
+        const r = await sfetch(
+          env,
+          `campaign_campaigns?select=campaign_id,campaign_name,description,notes&location_id=eq.${encodeURIComponent(location_id)}&order=campaign_id.desc`,
+          { method: "GET" }
+        );
+        if (!r.ok) return err("campaigns fetch failed", r.status, await r.text());
+        const rows = await r.json();
+        return json({ rows });
+      }
+
+      // Add campaign
+      if (req.method === "POST" && pathname === "/campaigns") {
+        const ct = (req.headers.get("content-type") || "").toLowerCase();
+        if (!ct.includes("application/json")) return err("Expected application/json", 415);
+        const body = await req.json();
+
+        const location_id   = String(body.location_id || "").trim();
+        const campaign_name = String(body.campaign_name || "").trim();
+        const description   = (body.description ?? "").toString().trim();
+        const notesIn       = (body.notes ?? "").toString().trim();
+        const created_at    = (body.created_at ?? "").toString().trim(); // ISO or blank
+
+        if (!location_id)   return err("location_id required");
+        if (!campaign_name) return err("campaign_name required");
+
+        const baseRow = {
+          location_id,
+          campaign_name,
+          description,
+          notes: notesIn || "Imported from GHL raw Exports",
+        };
+
+        const withDate = created_at ? { ...baseRow, created_at } : baseRow;
+
+        // Try insert with created_at if provided; on failure (unknown column) retry without it
+        let warn = null;
+        let r = await sfetch(env, `campaign_campaigns`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Prefer": "return=representation" },
+          body: JSON.stringify([withDate]),
+        });
+        let text = await r.text();
+
+        if (!r.ok && created_at && /column .*created_at.* does not exist/i.test(text)) {
+          warn = "campaigns.created_at column not found; inserted without created_at";
+          r = await sfetch(env, `campaign_campaigns`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Prefer": "return=representation" },
+            body: JSON.stringify([baseRow]),
+          });
+          text = await r.text();
+        }
+
+        if (!r.ok) return err("campaign insert failed", r.status, text);
+
+        let rows = [];
+        try { rows = JSON.parse(text); } catch {}
+        const campaign_id = rows?.[0]?.campaign_id;
+        if (!campaign_id) return err("campaign insert returned no id", 500, text);
+
+        return json({ campaign_id, warn });
+      }
+
+      // Runs by campaign
+      if (req.method === "GET" && pathname === "/runs") {
+        const campaign_id = searchParams.get("campaign_id");
+        if (!campaign_id) return err("campaign_id required");
+        const r = await sfetch(
+          env,
+          `campaign_runs?select=run_id,run_label,subject,notes&campaign_id=eq.${encodeURIComponent(campaign_id)}&order=run_id.desc`,
+          { method: "GET" }
+        );
+        if (!r.ok) return err("runs fetch failed", r.status, await r.text());
+        const rows = await r.json();
+        return json({ rows });
+      }
+
+      // Add run
+      if (req.method === "POST" && pathname === "/runs") {
+        const ct = (req.headers.get("content-type") || "").toLowerCase();
+        if (!ct.includes("application/json")) return err("Expected application/json", 415);
+        const body = await req.json();
+
+        const campaign_id = Number(body.campaign_id);
+        const run_label   = String(body.run_label || "").trim();
+        const subject     = (body.subject ?? "").toString();
+        const notes       = (body.notes   ?? "").toString();
+        const run_created_at = (body.run_created_at ?? "").toString().trim(); // ISO or blank
+
+        if (!campaign_id) return err("campaign_id required");
+        if (!run_label)   return err("run_label required");
+
+        const nowIso = new Date().toISOString();
+        const baseRow = {
+          campaign_id,
+          run_label,
+          subject,
+          notes,
+          source: "admin_ui",
+          is_backfill: true,
+          loaded_at: run_created_at || nowIso, // use historical date as the 'sent' marker
+          updated_at: nowIso,
+        };
+
+        // Try insert as-is; if loaded_at column doesn't exist, retry without loaded_at/updated_at
+        let r = await sfetch(env, `campaign_runs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Prefer": "return=representation" },
+          body: JSON.stringify([baseRow]),
+        });
+        let text = await r.text();
+
+        if (!r.ok && /column .*loaded_at.* does not exist/i.test(text)) {
+          const fallback = { campaign_id, run_label, subject, notes, source: "admin_ui", is_backfill: true };
+          r = await sfetch(env, `campaign_runs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Prefer": "return=representation" },
+            body: JSON.stringify([fallback]),
+          });
+          text = await r.text();
+        }
+
+        if (!r.ok) return err("run insert failed", r.status, text);
+
+        let rows = [];
+        try { rows = JSON.parse(text); } catch {}
+        const run_id = rows?.[0]?.run_id;
+        if (!run_id) return err("run insert returned no id", 500, text);
+
+        return json({ run_id });
+      }
+
+      // Bulk events import
+      if (req.method === "POST" && pathname === "/events_import") {
+        const ct = (req.headers.get("content-type") || "").toLowerCase();
+        if (!ct.includes("application/json")) return err("Expected application/json", 415);
+        const body = await req.json();
+
+        const campaign_id = Number(body.campaign_id);
+        const run_id      = Number(body.run_id);
+        const rows        = Array.isArray(body.rows) ? body.rows : [];
+
+        if (!campaign_id) return err("campaign_id required");
+        if (!run_id)      return err("run_id required");
+        if (!rows.length) return err("rows required (non-empty array)");
+
+        // Normalize each row (supports both native and GHL 4-col fallback)
+        const prepared = rows.map((r) => {
+          let row = r;
+
+          // Server-side fallback remap if it looks like a raw GHL export row
+          if (typeof r === 'object' && r && !('email' in r) && ('contact name' in r)) {
+            const mapped = mapServerSideRowFallback(r);
+            if (mapped) row = mapped;
+          }
+
+          const email   = (row.email ?? row.recipient_email ?? "").toString().trim();
+          const typeRaw = (row.event_type ?? row.type ?? "").toString().trim();
+          const evType  = normType(typeRaw);
+          const tsIn    = (row.event_timestamp ?? row.timestamp ?? "").toString().trim();
+          const ts      = tsIn || new Date().toISOString();
+
+          if (!email)   throw new Error("row missing email");
+          if (!evType)  throw new Error("row missing/invalid event_type");
+
+          const meta = {
+            contact_id : row.contact_id ?? row.ghl_contact_id ?? null,
+            first_name : row.first_name ?? null,
+            last_name  : row.last_name ?? null,
+            link_url   : row.link_url ?? row.url ?? null,
+            message_id : row.message_id ?? null,
+            source     : row.source ?? "ghl_export",
+            original   : r,
+          };
+
+          return {
+            campaign_id,
+            run_id,
+            event_type: evType,
+            recipient_email: email,
+            event_timestamp: ts,
+            meta,
+          };
+        });
+
+        const chunkSize = 500;
+        let inserted = 0, batches = 0;
+
+        for (let i = 0; i < prepared.length; i += chunkSize) {
+          const chunk = prepared.slice(i, i + chunkSize);
+          const r = await sfetch(env, `campaign_email_events`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify(chunk),
+          });
+          if (!r.ok) {
+            const txt = await r.text();
+            return err("events insert failed", r.status, txt);
+          }
+          inserted += chunk.length;
+          batches += 1;
+        }
+
+        return json({ ok: true, inserted, batches });
+      }
+
+      return err("Not Found", 404);
+    } catch (e) {
+      return err("Unhandled error", 500, String(e?.message || e));
+    }
+  },
 };
 
-// Init
-(function init(){
-  const sec = getSecret();
-  if (sec) {
-    el.secret.value = sec;
-    if (localStorage.getItem('gtr_admin_secret')) el.rememberSecret.checked = true;
-    loadClients();
-  }
-})();
-</script>
-</body>
-</html>
