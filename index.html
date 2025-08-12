@@ -12,7 +12,7 @@
     .row{display:flex;gap:var(--gap);align-items:center;margin:10px 0}
     .col{flex:1}
     label{display:block;font-weight:600;margin:12px 0 6px}
-    input[type=text], input[type=password], textarea, select {
+    input[type=text], input[type=password], input[type=datetime-local], textarea, select {
       width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:6px; outline:none;
     }
     textarea{min-height:110px; resize:vertical}
@@ -26,6 +26,7 @@
     .pill{font-size:12px; padding:3px 8px; background:#eee; border-radius:999px; display:inline-block}
     .hidden{display:none;}
     hr{border:none;border-top:1px solid #ddd;margin:20px 0;}
+    progress{height:12px; width:100%}
   </style>
 </head>
 <body>
@@ -75,6 +76,9 @@
     <label>Notes</label>
     <textarea id="campaignNotes" placeholder="Optional notes"></textarea>
 
+    <label>Campaign Created Date (optional)</label>
+    <input id="campaignCreatedAt" type="datetime-local" />
+
     <div class="row" style="margin-top:10px">
       <button class="btn primary" id="addCampaignBtn">Add Campaign</button>
     </div>
@@ -110,6 +114,9 @@
     <label>Notes</label>
     <textarea id="notes" placeholder="Optional notes"></textarea>
 
+    <label>Run Created/Sent Date (optional)</label>
+    <input id="runCreatedAt" type="datetime-local" />
+
     <div class="row" style="margin-top:16px">
       <button class="btn primary" id="saveRunBtn">Save Run</button>
     </div>
@@ -132,6 +139,10 @@
       <button class="btn primary" id="uploadBtn">Upload to Selected Run</button>
       <div id="uploadStatus" class="muted"></div>
     </div>
+    <div class="row" style="margin-top:10px">
+      <progress id="uploadProgressBar" value="0" max="100" style="width:100%"></progress>
+      <div id="uploadProgressText" class="muted" style="min-width:120px;text-align:right;"></div>
+    </div>
   </div>
 </div>
 
@@ -152,6 +163,7 @@ const el = {
   campaignName: document.getElementById('campaignName'),
   campaignDescription: document.getElementById('campaignDescription'),
   campaignNotes: document.getElementById('campaignNotes'),
+  campaignCreatedAt: document.getElementById('campaignCreatedAt'),
   addCampaignBtn: document.getElementById('addCampaignBtn'),
   campaignStatus: document.getElementById('campaignStatus'),
   campaignIdDisplay: document.getElementById('campaignIdDisplay'),
@@ -164,17 +176,19 @@ const el = {
   runLabel: document.getElementById('runLabel'),
   subject: document.getElementById('subject'),
   notes: document.getElementById('notes'),
+  runCreatedAt: document.getElementById('runCreatedAt'),
   saveRunBtn: document.getElementById('saveRunBtn'),
   runStatus: document.getElementById('runStatus'),
   runIdDisplay: document.getElementById('runIdDisplay'),
 
-  // NEW for upload
   runSelect: document.getElementById('runSelect'),
   csvFile: document.getElementById('csvFile'),
   parseBtn: document.getElementById('parseBtn'),
   csvStatus: document.getElementById('csvStatus'),
   uploadBtn: document.getElementById('uploadBtn'),
-  uploadStatus: document.getElementById('uploadStatus')
+  uploadStatus: document.getElementById('uploadStatus'),
+  uploadProgressBar: document.getElementById('uploadProgressBar'),
+  uploadProgressText: document.getElementById('uploadProgressText'),
 };
 
 function getSecret() {
@@ -293,19 +307,25 @@ el.addCampaignBtn.onclick = async () => {
   const campaign_name = el.campaignName.value.trim();
   const description = el.campaignDescription.value.trim();
   const notes = el.campaignNotes.value.trim();
+
+  // convert datetime-local to ISO (or blank)
+  const created_local = el.campaignCreatedAt.value;
+  const created_at = created_local ? new Date(created_local).toISOString() : '';
+
   if (!campaign_name) return alert('Campaign name required');
   try {
     const r = await fetch(`${WORKER_BASE}/campaigns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
-      body: JSON.stringify({ location_id, campaign_name, description, notes })
+      body: JSON.stringify({ location_id, campaign_name, description, notes, created_at })
     });
-    const { campaign_id } = await r.json();
-    el.campaignStatus.textContent = 'Campaign added ✔';
+    const { campaign_id, warn } = await r.json();
+    el.campaignStatus.textContent = warn ? `Campaign added ✔ (note: ${warn})` : 'Campaign added ✔';
     el.campaignIdDisplay.textContent = campaign_id;
     el.campaignName.value = '';
     el.campaignDescription.value = '';
     el.campaignNotes.value = '';
+    el.campaignCreatedAt.value = '';
     loadCampaigns(location_id);
   } catch (e) {
     el.campaignStatus.textContent = 'Error adding campaign';
@@ -319,17 +339,25 @@ el.saveRunBtn.onclick = async () => {
   const run_label = el.runLabel.value.trim();
   const subject = el.subject.value.trim();
   const notes = el.notes.value.trim();
+
+  const run_created_local = el.runCreatedAt.value;
+  const run_created_at = run_created_local ? new Date(run_created_local).toISOString() : '';
+
   if (!campaign_id) return alert('Pick a campaign first');
   if (!run_label)   return alert('Run label required');
   try {
     const r = await fetch(`${WORKER_BASE}/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
-      body: JSON.stringify({ campaign_id, run_label, subject, notes })
+      body: JSON.stringify({ campaign_id, run_label, subject, notes, run_created_at })
     });
     const { run_id } = await r.json();
     el.runStatus.textContent = 'Run saved ✔';
     el.runIdDisplay.textContent = run_id;
+    el.runLabel.value = '';
+    el.subject.value = '';
+    el.notes.value = '';
+    el.runCreatedAt.value = '';
     loadRuns(campaign_id);
   } catch (e) {
     el.runStatus.textContent = 'Error saving run';
@@ -397,7 +425,7 @@ el.parseBtn.onclick = async () => {
   }
 };
 
-// Upload to /events_import
+// Upload in batches to /events_import
 el.uploadBtn.onclick = async () => {
   el.uploadStatus.textContent = '';
   const secret = getSecret();
@@ -408,21 +436,44 @@ el.uploadBtn.onclick = async () => {
   if (!run_id)      return alert('Pick a run for upload');
   if (!parsedCSVRows.length) return alert('Parse a CSV first');
 
-  el.uploadStatus.textContent = 'Uploading…';
-  try {
-    const r = await fetch(`${WORKER_BASE}/events_import`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
-      body: JSON.stringify({
-        campaign_id: Number(campaign_id),
-        run_id: Number(run_id),
-        rows: parsedCSVRows
-      })
-    });
-    const resp = await r.json();
-    if (!r.ok) throw new Error(resp?.detail || resp?.error || 'Upload failed');
+  const batchSize = 500;
+  const total = parsedCSVRows.length;
+  let sent = 0;
+  let batchesOk = 0;
 
-    el.uploadStatus.textContent = `Uploaded ${resp.inserted} events in ${resp.batches} batch(es) ✔`;
+  el.uploadProgressBar.value = 0;
+  el.uploadProgressText.textContent = '';
+  el.uploadStatus.textContent = 'Uploading…';
+
+  try {
+    for (let i = 0; i < total; i += batchSize) {
+      const chunk = parsedCSVRows.slice(i, i + batchSize);
+      const r = await fetch(`${WORKER_BASE}/events_import`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Secret': secret
+        },
+        body: JSON.stringify({
+          campaign_id: Number(campaign_id),
+          run_id: Number(run_id),
+          rows: chunk
+        })
+      });
+
+      const resp = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const msg = resp?.detail || resp?.error || `Batch ${batchesOk + 1} failed`;
+        throw new Error(msg);
+      }
+      sent += chunk.length;
+      batchesOk += 1;
+      const pct = Math.round((sent / total) * 100);
+      el.uploadProgressBar.value = pct;
+      el.uploadProgressText.textContent = `${sent}/${total} (${pct}%)`;
+    }
+
+    el.uploadStatus.textContent = `Uploaded ${sent} events in ${batchesOk} batch(es) ✔`;
   } catch (e) {
     el.uploadStatus.textContent = 'Upload failed';
     alert(e.message || e);
@@ -441,4 +492,3 @@ el.uploadBtn.onclick = async () => {
 </script>
 </body>
 </html>
-
