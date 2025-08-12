@@ -30,7 +30,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Campaign Manager <span class="pill">GTR Core</span></h1>
+  <h1>Campaign Manager 2.0 <span class="pill">GTR Core</span></h1>
 
   <!-- ADMIN SECRET -->
   <label>Admin Secret</label>
@@ -92,7 +92,13 @@
       <strong>Campaign:</strong> <span id="runCampaignId">—</span> - <span id="runCampaignName">—</span>
     </div>
 
-    <div id="runsList" class="muted">No runs yet.</div>
+    <div id="runsList" class="muted" style="margin-bottom:10px;">No runs yet.</div>
+
+    <!-- Choose run for uploads -->
+    <label>Choose Run for Upload</label>
+    <select id="runSelect">
+      <option value="">Pick a run →</option>
+    </select>
 
     <h3 style="margin-top:20px;">Add New Run</h3>
     <label>Run Label</label>
@@ -109,6 +115,23 @@
     </div>
     <div style="margin-top:10px;">Run ID: <span id="runIdDisplay">—</span></div>
     <div id="runStatus" class="muted"></div>
+
+    <hr>
+
+    <!-- BULK UPLOAD -->
+    <h2>Bulk Upload Events (CSV)</h2>
+    <div class="muted" style="margin-bottom:8px;">
+      Required headers: <code>email</code>, <code>event_type</code>. Optional: <code>contact_id</code>, <code>first_name</code>, <code>last_name</code>, <code>event_timestamp</code>, <code>link_url</code>, <code>message_id</code>.
+    </div>
+    <input id="csvFile" type="file" accept=".csv" />
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="parseBtn">Parse CSV</button>
+      <div id="csvStatus" class="muted"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="uploadBtn">Upload to Selected Run</button>
+      <div id="uploadStatus" class="muted"></div>
+    </div>
   </div>
 </div>
 
@@ -143,7 +166,15 @@ const el = {
   notes: document.getElementById('notes'),
   saveRunBtn: document.getElementById('saveRunBtn'),
   runStatus: document.getElementById('runStatus'),
-  runIdDisplay: document.getElementById('runIdDisplay')
+  runIdDisplay: document.getElementById('runIdDisplay'),
+
+  // NEW for upload
+  runSelect: document.getElementById('runSelect'),
+  csvFile: document.getElementById('csvFile'),
+  parseBtn: document.getElementById('parseBtn'),
+  csvStatus: document.getElementById('csvStatus'),
+  uploadBtn: document.getElementById('uploadBtn'),
+  uploadStatus: document.getElementById('uploadStatus')
 };
 
 function getSecret() {
@@ -196,9 +227,16 @@ async function loadRuns(campaignId) {
   try {
     const r = await fetch(`${WORKER_BASE}/runs?campaign_id=${campaignId}`, { headers: { 'X-Admin-Secret': secret }});
     const { rows } = await r.json();
+
+    // list
     el.runsList.innerHTML = rows.length ? rows.map(rn => `${rn.run_id}: ${rn.run_label}`).join('<br>') : 'No runs yet.';
+
+    // upload dropdown
+    el.runSelect.innerHTML = '<option value="">Pick a run →</option>' +
+      rows.map(rn => `<option value="${rn.run_id}">${rn.run_id} — ${rn.run_label}</option>`).join('');
   } catch (e) {
     el.runsList.textContent = 'Error loading runs';
+    el.runSelect.innerHTML = '<option value="">Pick a run →</option>';
   }
 }
 
@@ -282,6 +320,7 @@ el.saveRunBtn.onclick = async () => {
   const subject = el.subject.value.trim();
   const notes = el.notes.value.trim();
   if (!campaign_id) return alert('Pick a campaign first');
+  if (!run_label)   return alert('Run label required');
   try {
     const r = await fetch(`${WORKER_BASE}/runs`, {
       method: 'POST',
@@ -297,6 +336,99 @@ el.saveRunBtn.onclick = async () => {
   }
 };
 
+// --- Tiny CSV parser (handles quotes and commas) ---
+function parseCSV(text) {
+  const rows = [];
+  let i = 0, field = "", row = [], inQuotes = false;
+
+  function endField() { row.push(field); field = ""; }
+  function endRow() { rows.push(row); row = []; }
+
+  while (i < text.length) {
+    const c = text[i++];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i] === '"') { field += '"'; i++; } // escaped quote
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') endField();
+      else if (c === '\n') { endField(); endRow(); }
+      else if (c === '\r') { /* ignore */ }
+      else field += c;
+    }
+  }
+  endField();
+  if (row.length > 1 || (row.length === 1 && row[0] !== "")) endRow();
+
+  const header = rows.shift().map(h => h.trim().toLowerCase());
+  return rows.map(r => {
+    const obj = {};
+    for (let j = 0; j < header.length; j++) obj[header[j]] = (r[j] ?? "").trim();
+    return obj;
+  });
+}
+
+let parsedCSVRows = [];
+
+// Parse CSV
+el.parseBtn.onclick = async () => {
+  el.csvStatus.textContent = '';
+  parsedCSVRows = [];
+  const f = el.csvFile.files?.[0];
+  if (!f) { el.csvStatus.textContent = 'Choose a CSV file first'; return; }
+
+  const txt = await f.text();
+  try {
+    const rows = parseCSV(txt);
+    if (!rows.length) { el.csvStatus.textContent = 'No rows found'; return; }
+
+    const first = rows[0];
+    if (!('email' in first) || !('event_type' in first)) {
+      el.csvStatus.textContent = 'CSV must include headers: email, event_type';
+      return;
+    }
+    parsedCSVRows = rows;
+    el.csvStatus.textContent = `Parsed ${rows.length} rows ✅`;
+  } catch (e) {
+    el.csvStatus.textContent = 'Parse error';
+    alert(e.message || e);
+  }
+};
+
+// Upload to /events_import
+el.uploadBtn.onclick = async () => {
+  el.uploadStatus.textContent = '';
+  const secret = getSecret();
+  const campaign_id = el.campaignSelect.value;
+  const run_id = el.runSelect.value;
+
+  if (!campaign_id) return alert('Pick a campaign first');
+  if (!run_id)      return alert('Pick a run for upload');
+  if (!parsedCSVRows.length) return alert('Parse a CSV first');
+
+  el.uploadStatus.textContent = 'Uploading…';
+  try {
+    const r = await fetch(`${WORKER_BASE}/events_import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
+      body: JSON.stringify({
+        campaign_id: Number(campaign_id),
+        run_id: Number(run_id),
+        rows: parsedCSVRows
+      })
+    });
+    const resp = await r.json();
+    if (!r.ok) throw new Error(resp?.detail || resp?.error || 'Upload failed');
+
+    el.uploadStatus.textContent = `Uploaded ${resp.inserted} events in ${resp.batches} batch(es) ✔`;
+  } catch (e) {
+    el.uploadStatus.textContent = 'Upload failed';
+    alert(e.message || e);
+  }
+};
+
 // Init
 (function init(){
   const sec = getSecret();
@@ -309,3 +441,4 @@ el.saveRunBtn.onclick = async () => {
 </script>
 </body>
 </html>
+
