@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Manual Campaign Entry 1.0 · GTR Core</title>
+  <title>Campaign Manager · GTR Core</title>
   <style>
     :root { --gap: 14px; --fg:#111; --bg:#fff; --muted:#666; --blue:#1e66f5; --red:#d63939; --green:#117e24; }
     html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}
@@ -24,258 +24,258 @@
     .bar{display:flex;gap:var(--gap);align-items:center}
     .grow{flex:1}
     .pill{font-size:12px; padding:3px 8px; background:#eee; border-radius:999px; display:inline-block}
+    .hidden{display:none;}
+    hr{border:none;border-top:1px solid #ddd;margin:20px 0;}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Manual Campaign Entry 1.0 <span class="pill">GTR Core</span></h1>
+<div class="wrap">
+  <h1>Campaign Manager <span class="pill">GTR Core</span></h1>
 
-    <!-- ADMIN SECRET -->
-    <label>Admin Secret</label>
-    <div class="bar">
-      <input id="secret" type="password" placeholder="Paste ADMIN_SECRET (stored on this device if you check remember)" class="grow" />
-      <button class="btn" id="useSecretBtn">Use Secret</button>
-      <button class="btn danger" id="clearSecretBtn">Clear Secret</button>
-    </div>
-    <div class="bar" style="margin-top:6px">
-      <label style="display:flex;align-items:center;gap:8px;margin:0">
-        <input type="checkbox" id="rememberSecret" /> Remember this device
-      </label>
-      <div id="secretStatus" class="muted grow"></div>
-    </div>
-
-    <!-- CLIENT PICKER -->
-    <div class="row" style="margin-top:18px">
-      <div class="col">
-        <label>Selected Client</label>
-        <select id="clientSelect">
-          <option value="">Pick from list →</option>
-        </select>
-      </div>
-      <div class="col">
-        <label>Location ID</label>
-        <input id="locationId" type="text" placeholder="Auto-filled" readonly />
-      </div>
-    </div>
-
-    <!-- CAMPAIGN INFO -->
-    <label>Campaign Name</label>
-    <input id="campaignName" type="text" placeholder="Aug 10 Newsletter A" />
-
-    <!-- RUN LABEL -->
-    <div class="row">
-      <div class="col">
-        <label>Run Label</label>
-        <input id="runLabel" type="text" placeholder="e.g. 2025-08-10-newsletter" />
-      </div>
-      <div style="align-self:flex-end">
-        <button class="btn primary" id="suggestBtn">Suggest</button>
-      </div>
-    </div>
-
-    <label>Subject</label>
-    <input id="subject" type="text" placeholder="3 Tips to Boost Leads" />
-
-    <label>Notes</label>
-    <textarea id="notes" placeholder="Imported from GHL raw exports"></textarea>
-
-    <div class="row" style="margin-top:16px">
-      <button class="btn primary" id="saveBtn">Save / Upsert</button>
-      <button class="btn" id="clearBtn">Clear</button>
-      <div id="saveStatus" class="muted"></div>
-    </div>
+  <!-- ADMIN SECRET -->
+  <label>Admin Secret</label>
+  <div class="bar">
+    <input id="secret" type="password" placeholder="Paste ADMIN_SECRET" class="grow" />
+    <button class="btn" id="useSecretBtn">Use Secret</button>
+    <button class="btn danger" id="clearSecretBtn">Clear Secret</button>
+  </div>
+  <div class="bar" style="margin-top:6px">
+    <label style="display:flex;align-items:center;gap:8px;margin:0">
+      <input type="checkbox" id="rememberSecret" /> Remember this device
+    </label>
+    <div id="secretStatus" class="muted grow"></div>
   </div>
 
+  <!-- CLIENT PICKER -->
+  <hr>
+  <label>Select Client</label>
+  <select id="clientSelect">
+    <option value="">Pick from list →</option>
+  </select>
+  <label>Location ID</label>
+  <input id="locationId" type="text" readonly />
+
+  <!-- CAMPAIGN SECTION -->
+  <hr>
+  <div id="campaignSection" class="hidden">
+    <h2>Campaigns</h2>
+    <label>Choose Existing Campaign</label>
+    <select id="campaignSelect">
+      <option value="">Pick from list →</option>
+    </select>
+    <div style="margin-top:10px;">Campaign ID: <span id="campaignIdDisplay">—</span></div>
+
+    <h3 style="margin-top:20px;">Or Add New Campaign</h3>
+    <label>Campaign Name</label>
+    <input id="campaignName" type="text" placeholder="Workflow or Newsletter Name" />
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="addCampaignBtn">Add Campaign</button>
+    </div>
+    <div id="campaignStatus" class="muted"></div>
+  </div>
+
+  <!-- RUNS SECTION -->
+  <hr>
+  <div id="runSection" class="hidden">
+    <h2>Runs for Selected Campaign</h2>
+    <div id="runsList" class="muted">No runs yet.</div>
+
+    <h3 style="margin-top:20px;">Add New Run</h3>
+    <label>Run Label</label>
+    <input id="runLabel" type="text" placeholder="e.g. 2025-08-10-newsletter" />
+
+    <label>Subject</label>
+    <input id="subject" type="text" placeholder="Email subject line" />
+
+    <label>Notes</label>
+    <textarea id="notes" placeholder="Optional notes"></textarea>
+
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="saveRunBtn">Save Run</button>
+    </div>
+    <div style="margin-top:10px;">Run ID: <span id="runIdDisplay">—</span></div>
+    <div id="runStatus" class="muted"></div>
+  </div>
+</div>
+
 <script>
-  // === CONFIG ===
-  const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
+const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
+const el = {
+  secret: document.getElementById('secret'),
+  rememberSecret: document.getElementById('rememberSecret'),
+  useSecretBtn: document.getElementById('useSecretBtn'),
+  clearSecretBtn: document.getElementById('clearSecretBtn'),
+  secretStatus: document.getElementById('secretStatus'),
 
-  // === DOM ===
-  const el = {
-    secret: document.getElementById('secret'),
-    rememberSecret: document.getElementById('rememberSecret'),
-    useSecretBtn: document.getElementById('useSecretBtn'),
-    clearSecretBtn: document.getElementById('clearSecretBtn'),
-    secretStatus: document.getElementById('secretStatus'),
+  clientSelect: document.getElementById('clientSelect'),
+  locationId: document.getElementById('locationId'),
 
-    clientSelect: document.getElementById('clientSelect'),
-    locationId: document.getElementById('locationId'),
+  campaignSection: document.getElementById('campaignSection'),
+  campaignSelect: document.getElementById('campaignSelect'),
+  campaignName: document.getElementById('campaignName'),
+  addCampaignBtn: document.getElementById('addCampaignBtn'),
+  campaignStatus: document.getElementById('campaignStatus'),
+  campaignIdDisplay: document.getElementById('campaignIdDisplay'),
 
-    runLabel: document.getElementById('runLabel'),
-    suggestBtn: document.getElementById('suggestBtn'),
-
-    campaignName: document.getElementById('campaignName'),
-    subject: document.getElementById('subject'),
-    notes: document.getElementById('notes'),
-
-    saveBtn: document.getElementById('saveBtn'),
-    clearBtn: document.getElementById('clearBtn'),
-    saveStatus: document.getElementById('saveStatus'),
-  };
-
-  // === SECRET PERSISTENCE ===
-  function getSecret() {
-    return sessionStorage.getItem('gtr_admin_secret')
-        || localStorage.getItem('gtr_admin_secret')
-        || '';
-  }
-  function setSecret(sec, remember) {
-    sessionStorage.removeItem('gtr_admin_secret');
-    localStorage.removeItem('gtr_admin_secret');
-    if (remember) localStorage.setItem('gtr_admin_secret', sec);
-    else sessionStorage.setItem('gtr_admin_secret', sec);
-  }
-  function showSecretStatus(msg, ok=false) {
-    el.secretStatus.textContent = msg;
-    el.secretStatus.className = ok ? 'ok' : 'muted';
-  }
-
-  // === LOAD CLIENTS (all) ===
-  async function loadClients() {
-    const secret = getSecret();
-    if (!secret) { showSecretStatus('Paste admin secret to load clients'); return; }
-
-    el.clientSelect.innerHTML = '<option value="">Loading…</option>';
-    try {
-      const r = await fetch(`${WORKER_BASE}/clients`, {
-        headers: { 'X-Admin-Secret': secret }
-      });
-      if (!r.ok) {
-        const t = await r.text();
-        throw new Error(`clients fetch failed: ${t}`);
-      }
-      const { rows } = await r.json();
-
-      // Build options
-      const opts = ['<option value="">Pick from list →</option>'];
-      rows.forEach(row => {
-        const label =
-          row.business_name?.trim() ||
-          row.full_name?.trim() ||
-          row.email?.trim() ||
-          row.location_id;
-        const extra = row.email ? ` — ${row.email}` : '';
-        opts.push(`<option value="${encodeHTML(row.location_id)}" data-name="${encodeHTML(label)}">${encodeHTML(label)}${encodeHTML(extra)}</option>`);
-      });
-      el.clientSelect.innerHTML = opts.join('');
-      showSecretStatus(`Loaded ${rows.length} clients`, true);
-    } catch (e) {
-      el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
-      alert(e.message || e);
-      showSecretStatus('Failed to load clients');
-    }
-  }
-
-  // === HELPERS ===
-  function encodeHTML(s){ return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function slug(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
-
-  // === EVENTS ===
-  el.useSecretBtn.onclick = () => {
-    const sec = el.secret.value.trim();
-    const remember = el.rememberSecret.checked;
-    if (!sec) { alert('Paste ADMIN_SECRET'); return; }
-    setSecret(sec, remember);
-    showSecretStatus('Admin secret loaded' + (remember ? ' (remembered on this device).' : '.'), true);
-    loadClients();
-  };
-  el.clearSecretBtn.onclick = () => {
-    sessionStorage.removeItem('gtr_admin_secret');
-    localStorage.removeItem('gtr_admin_secret');
-    el.secret.value = '';
-    showSecretStatus('Secret cleared');
-    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
-    el.locationId.value = '';
-  };
-
-  // When a client is chosen → fill location_id
-  el.clientSelect.onchange = () => {
-    const loc = el.clientSelect.value || '';
-    el.locationId.value = loc;
-  };
-
-  // Suggest run label
-  el.suggestBtn.onclick = () => {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth()+1).padStart(2,'0');
-    const dd = String(d.getDate()).padStart(2,'0');
-    const base = el.campaignName.value.trim() || el.subject.value.trim() || 'newsletter';
-    el.runLabel.value = `${yyyy}-${mm}-${dd}-${slug(base)}`;
-  };
-
-  // Clear form
-  el.clearBtn.onclick = () => {
-    el.clientSelect.value = '';
-    el.locationId.value = '';
-    el.runLabel.value = '';
-    el.campaignName.value = '';
-    el.subject.value = '';
-    el.notes.value = '';
-    el.saveStatus.textContent = '';
-  };
-
-  // Save / Upsert
-  el.saveBtn.onclick = async () => {
-    const secret = getSecret();
-    if (!secret) { alert('Admin secret required'); return; }
-
-    const location_id = el.locationId.value.trim();
-    const run_label = el.runLabel.value.trim();
-    const campaign_name = el.campaignName.value.trim();
-    const subject = el.subject.value.trim();
-    const notes = el.notes.value.trim();
-
-    if (!location_id) return alert('Pick a client first');
-    if (!run_label) return alert('Run label is required');
-
-    el.saveStatus.textContent = 'Saving…';
-    try {
-      const r = await fetch(`${WORKER_BASE}/campaigns`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Admin-Secret': secret
-        },
-        body: JSON.stringify({ location_id, run_label, campaign_name, subject, notes })
-      });
-      const t = await r.text();
-      if (!r.ok) throw new Error(t || 'Save failed');
-      el.saveStatus.textContent = 'Saved ✔';
-      setTimeout(()=> el.saveStatus.textContent='', 2500);
-    } catch (e) {
-      el.saveStatus.textContent = 'Save failed';
-      alert(e.message || e);
-    }
-  };
-
-  function slug(s){ return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
-function todayISO(){ const d=new Date(); return [d.getFullYear(), String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0')].join('-'); }
-
-// Auto-fill when leaving Campaign Name
-document.getElementById('campaignName').addEventListener('blur', () => {
-  const run = document.getElementById('runLabel');
-  if (run.value.trim()) return; // don’t overwrite if user already set it
-  const base = document.getElementById('campaignName').value.trim() || document.getElementById('subject').value.trim() || 'campaign';
-  run.value = `${todayISO()}-${slug(base)}`;
-});
-
-// Keep the manual Suggest button too
-document.getElementById('suggestBtn').onclick = () => {
-  const base = document.getElementById('campaignName').value.trim() || document.getElementById('subject').value.trim() || 'campaign';
-  document.getElementById('runLabel').value = `${todayISO()}-${slug(base)}`;
+  runSection: document.getElementById('runSection'),
+  runsList: document.getElementById('runsList'),
+  runLabel: document.getElementById('runLabel'),
+  subject: document.getElementById('subject'),
+  notes: document.getElementById('notes'),
+  saveRunBtn: document.getElementById('saveRunBtn'),
+  runStatus: document.getElementById('runStatus'),
+  runIdDisplay: document.getElementById('runIdDisplay')
 };
 
-  // Auto-load secret + clients on first visit if remembered
-  (function init(){
-    const sec = getSecret();
-    if (sec) {
-      el.secret.value = sec;
-      showSecretStatus('Admin secret loaded' + (localStorage.getItem('gtr_admin_secret') ? ' (remembered).' : '.'), true);
-      if (localStorage.getItem('gtr_admin_secret')) el.rememberSecret.checked = true;
-      loadClients();
-    }
-  })();
+function getSecret() {
+  return sessionStorage.getItem('gtr_admin_secret')
+      || localStorage.getItem('gtr_admin_secret')
+      || '';
+}
+function setSecret(sec, remember) {
+  sessionStorage.removeItem('gtr_admin_secret');
+  localStorage.removeItem('gtr_admin_secret');
+  if (remember) localStorage.setItem('gtr_admin_secret', sec);
+  else sessionStorage.setItem('gtr_admin_secret', sec);
+}
+function showSecretStatus(msg, ok=false) {
+  el.secretStatus.textContent = msg;
+  el.secretStatus.className = ok ? 'ok' : 'muted';
+}
+
+async function loadClients() {
+  const secret = getSecret();
+  if (!secret) { showSecretStatus('Paste admin secret'); return; }
+  el.clientSelect.innerHTML = '<option>Loading…</option>';
+  try {
+    const r = await fetch(`${WORKER_BASE}/clients`, { headers: { 'X-Admin-Secret': secret }});
+    const { rows } = await r.json();
+    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>' +
+      rows.map(row => `<option value="${row.location_id}">${row.business_name||row.full_name||row.email}</option>`).join('');
+    showSecretStatus(`Loaded ${rows.length} clients`, true);
+  } catch (e) {
+    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
+    showSecretStatus('Failed to load clients');
+  }
+}
+
+async function loadCampaigns(locationId) {
+  const secret = getSecret();
+  el.campaignSelect.innerHTML = '<option>Loading…</option>';
+  try {
+    const r = await fetch(`${WORKER_BASE}/campaigns?location_id=${encodeURIComponent(locationId)}`, { headers: { 'X-Admin-Secret': secret }});
+    const { rows } = await r.json();
+    el.campaignSelect.innerHTML = '<option value="">Pick from list →</option>' +
+      rows.map(row => `<option value="${row.campaign_id}">${row.campaign_name}</option>`).join('');
+  } catch (e) {
+    el.campaignSelect.innerHTML = '<option value="">Pick from list →</option>';
+  }
+}
+
+async function loadRuns(campaignId) {
+  const secret = getSecret();
+  try {
+    const r = await fetch(`${WORKER_BASE}/runs?campaign_id=${campaignId}`, { headers: { 'X-Admin-Secret': secret }});
+    const { rows } = await r.json();
+    el.runsList.innerHTML = rows.length ? rows.map(rn => `${rn.run_id}: ${rn.run_label}`).join('<br>') : 'No runs yet.';
+  } catch (e) {
+    el.runsList.textContent = 'Error loading runs';
+  }
+}
+
+// EVENT: use secret
+el.useSecretBtn.onclick = () => {
+  const sec = el.secret.value.trim();
+  if (!sec) return alert('Paste ADMIN_SECRET');
+  setSecret(sec, el.rememberSecret.checked);
+  showSecretStatus('Admin secret loaded', true);
+  loadClients();
+};
+el.clearSecretBtn.onclick = () => {
+  sessionStorage.removeItem('gtr_admin_secret');
+  localStorage.removeItem('gtr_admin_secret');
+  el.secret.value = '';
+  showSecretStatus('Secret cleared');
+};
+
+// EVENT: client chosen
+el.clientSelect.onchange = () => {
+  el.locationId.value = el.clientSelect.value || '';
+  if (el.clientSelect.value) {
+    el.campaignSection.classList.remove('hidden');
+    loadCampaigns(el.clientSelect.value);
+  } else {
+    el.campaignSection.classList.add('hidden');
+    el.runSection.classList.add('hidden');
+  }
+};
+
+// EVENT: campaign chosen
+el.campaignSelect.onchange = () => {
+  const cid = el.campaignSelect.value;
+  if (cid) {
+    el.campaignIdDisplay.textContent = cid;
+    el.runSection.classList.remove('hidden');
+    loadRuns(cid);
+  } else {
+    el.campaignIdDisplay.textContent = '—';
+    el.runSection.classList.add('hidden');
+  }
+};
+
+// EVENT: add campaign
+el.addCampaignBtn.onclick = async () => {
+  const secret = getSecret();
+  const location_id = el.locationId.value;
+  const campaign_name = el.campaignName.value.trim();
+  if (!campaign_name) return alert('Campaign name required');
+  try {
+    const r = await fetch(`${WORKER_BASE}/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
+      body: JSON.stringify({ location_id, campaign_name })
+    });
+    const { campaign_id } = await r.json();
+    el.campaignStatus.textContent = 'Campaign added ✔';
+    el.campaignIdDisplay.textContent = campaign_id;
+    loadCampaigns(location_id);
+  } catch (e) {
+    el.campaignStatus.textContent = 'Error adding campaign';
+  }
+};
+
+// EVENT: save run
+el.saveRunBtn.onclick = async () => {
+  const secret = getSecret();
+  const campaign_id = el.campaignSelect.value;
+  const run_label = el.runLabel.value.trim();
+  const subject = el.subject.value.trim();
+  const notes = el.notes.value.trim();
+  if (!campaign_id) return alert('Pick a campaign first');
+  try {
+    const r = await fetch(`${WORKER_BASE}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
+      body: JSON.stringify({ campaign_id, run_label, subject, notes })
+    });
+    const { run_id } = await r.json();
+    el.runStatus.textContent = 'Run saved ✔';
+    el.runIdDisplay.textContent = run_id;
+    loadRuns(campaign_id);
+  } catch (e) {
+    el.runStatus.textContent = 'Error saving run';
+  }
+};
+
+// Init
+(function init(){
+  const sec = getSecret();
+  if (sec) {
+    el.secret.value = sec;
+    if (localStorage.getItem('gtr_admin_secret')) el.rememberSecret.checked = true;
+    loadClients();
+  }
+})();
 </script>
 </body>
 </html>
