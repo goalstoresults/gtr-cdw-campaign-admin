@@ -1,190 +1,311 @@
-// GTR Core - Campaign Manager Worker (Supabase version)
-
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, X-Admin-Secret",
-};
-
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { ...CORS, "Content-Type": "application/json" },
-  });
-
-const err = (message, status = 400, detail) =>
-  json({ error: message, detail }, status);
-
-function needEnv(env) {
-  const miss = [];
-  if (!env.SUPABASE_URL?.startsWith("https://")) miss.push("SUPABASE_URL");
-  if (!env.SUPABASE_SERVICE_ROLE) miss.push("SUPABASE_SERVICE_ROLE");
-  if (!env.ADMIN_SECRET) miss.push("ADMIN_SECRET");
-  return miss;
-}
-
-async function sfetch(env, pathWithQuery, init = {}) {
-  const url = `${env.SUPABASE_URL}/rest/v1/${pathWithQuery}`;
-  return fetch(url, {
-    ...init,
-    headers: {
-      "apikey": env.SUPABASE_SERVICE_ROLE,
-      "Authorization": `Bearer ${env.SUPABASE_SERVICE_ROLE}`,
-      ...(init.headers || {}),
-    },
-  });
-}
-
-export default {
-  async fetch(req, env) {
-    try {
-      if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-
-      // env check
-      const miss = needEnv(env);
-      if (miss.length) return err(`Missing env: ${miss.join(", ")}`, 500);
-
-      // auth
-      const admin = req.headers.get("X-Admin-Secret");
-      if (admin !== env.ADMIN_SECRET) return err("Unauthorized", 401);
-
-      const url = new URL(req.url);
-      const { pathname, searchParams } = url;
-
-      // ---- ROUTES ----
-
-      // Health
-      if (req.method === "GET" && pathname === "/health") {
-        return json({ ok: true, ts: new Date().toISOString() });
-      }
-
-      // Clients list -> { rows: [...] }
-      if (req.method === "GET" && pathname === "/clients") {
-        const r = await sfetch(
-          env,
-          `clients?select=location_id,business_name,full_name,email&order=business_name.asc,full_name.asc&limit=1000`,
-          { method: "GET" }
-        );
-        if (!r.ok) return err("clients fetch failed", r.status, await r.text());
-        const rows = await r.json();
-        return json({ rows });
-      }
-
-      // Get campaigns for a client (location_id) -> { rows: [...] }
-      if (req.method === "GET" && pathname === "/campaigns") {
-        const location_id = searchParams.get("location_id") || "";
-        if (!location_id) return err("location_id required");
-        const r = await sfetch(
-          env,
-          `campaign_campaigns?select=campaign_id,campaign_name,description,notes&location_id=eq.${encodeURIComponent(location_id)}&order=campaign_id.desc`,
-          { method: "GET" }
-        );
-        if (!r.ok) return err("campaigns fetch failed", r.status, await r.text());
-        const rows = await r.json();
-        return json({ rows });
-      }
-
-      // Add campaign -> { campaign_id }
-      if (req.method === "POST" && pathname === "/campaigns") {
-        const ct = (req.headers.get("content-type") || "").toLowerCase();
-        if (!ct.includes("application/json")) return err("Expected application/json", 415);
-        const body = await req.json();
-
-        const location_id   = String(body.location_id || "").trim();
-        const campaign_name = String(body.campaign_name || "").trim();
-        const description   = (body.description ?? "").toString().trim();
-        const notes         = (body.notes ?? "").toString().trim();
-
-        if (!location_id)   return err("location_id required");
-        if (!campaign_name) return err("campaign_name required");
-
-        const row = {
-          location_id,
-          campaign_name,
-          description,                                   // NEW
-          notes: notes || "Imported from GHL raw Exports", // default if blank
-        };
-
-        const r = await sfetch(env, `campaign_campaigns`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-          },
-          body: JSON.stringify([row]),
-        });
-        const text = await r.text();
-        if (!r.ok) return err("campaign insert failed", r.status, text);
-
-        let rows = [];
-        try { rows = JSON.parse(text); } catch {}
-        const campaign_id = rows?.[0]?.campaign_id;
-        if (!campaign_id) return err("campaign insert returned no id", 500, text);
-
-        return json({ campaign_id });
-      }
-
-      // Get runs for a campaign -> { rows: [...] }
-      if (req.method === "GET" && pathname === "/runs") {
-        const campaign_id = searchParams.get("campaign_id");
-        if (!campaign_id) return err("campaign_id required");
-        const r = await sfetch(
-          env,
-          `campaign_runs?select=run_id,run_label,subject,notes&campaign_id=eq.${encodeURIComponent(campaign_id)}&order=run_id.desc`,
-          { method: "GET" }
-        );
-        if (!r.ok) return err("runs fetch failed", r.status, await r.text());
-        const rows = await r.json();
-        return json({ rows });
-      }
-
-      // Add run -> { run_id }
-      if (req.method === "POST" && pathname === "/runs") {
-        const ct = (req.headers.get("content-type") || "").toLowerCase();
-        if (!ct.includes("application/json")) return err("Expected application/json", 415);
-        const body = await req.json();
-
-        const campaign_id = Number(body.campaign_id);
-        const run_label   = String(body.run_label || "").trim();
-        const subject     = (body.subject ?? "").toString();
-        const notes       = (body.notes ?? "").toString();
-
-        if (!campaign_id) return err("campaign_id required");
-        if (!run_label)   return err("run_label required");
-
-        const row = {
-          campaign_id,
-          run_label,
-          subject,
-          notes,
-          source: "admin_ui",
-          is_backfill: true,
-          loaded_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-
-        const r = await sfetch(env, `campaign_runs`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-          },
-          body: JSON.stringify([row]),
-        });
-        const text = await r.text();
-        if (!r.ok) return err("run insert failed", r.status, text);
-
-        let rows = [];
-        try { rows = JSON.parse(text); } catch {}
-        const run_id = rows?.[0]?.run_id;
-        if (!run_id) return err("run insert returned no id", 500, text);
-
-        return json({ run_id });
-      }
-
-      return err("Not Found", 404);
-    } catch (e) {
-      return err("Unhandled error", 500, String(e?.message || e));
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Campaign Manager · GTR Core</title>
+  <style>
+    :root { --gap: 14px; --fg:#111; --bg:#fff; --muted:#666; --blue:#1e66f5; --red:#d63939; --green:#117e24; }
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}
+    .wrap{max-width:900px;margin:32px auto;padding:0 18px;}
+    h1{font-size:24px;margin:0 0 18px 0}
+    .row{display:flex;gap:var(--gap);align-items:center;margin:10px 0}
+    .col{flex:1}
+    label{display:block;font-weight:600;margin:12px 0 6px}
+    input[type=text], input[type=password], textarea, select {
+      width:100%; box-sizing:border-box; padding:10px 12px; border:1px solid #ddd; border-radius:6px; outline:none;
     }
-  },
+    textarea{min-height:110px; resize:vertical}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px; padding:9px 14px; border-radius:6px; border:1px solid #ddd; background:#f6f6f6; cursor:pointer}
+    .btn.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+    .btn.danger{background:var(--red); border-color:var(--red); color:#fff}
+    .muted{color:var(--muted); font-size:12px}
+    .ok{color:var(--green); font-weight:600}
+    .bar{display:flex;gap:var(--gap);align-items:center}
+    .grow{flex:1}
+    .pill{font-size:12px; padding:3px 8px; background:#eee; border-radius:999px; display:inline-block}
+    .hidden{display:none;}
+    hr{border:none;border-top:1px solid #ddd;margin:20px 0;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Campaign Manager <span class="pill">GTR Core</span></h1>
+
+  <!-- ADMIN SECRET -->
+  <label>Admin Secret</label>
+  <div class="bar">
+    <input id="secret" type="password" placeholder="Paste ADMIN_SECRET" class="grow" />
+    <button class="btn" id="useSecretBtn">Use Secret</button>
+    <button class="btn danger" id="clearSecretBtn">Clear Secret</button>
+  </div>
+  <div class="bar" style="margin-top:6px">
+    <label style="display:flex;align-items:center;gap:8px;margin:0">
+      <input type="checkbox" id="rememberSecret" /> Remember this device
+    </label>
+    <div id="secretStatus" class="muted grow"></div>
+  </div>
+
+  <!-- CLIENT PICKER -->
+  <hr>
+  <label>Select Client</label>
+  <select id="clientSelect">
+    <option value="">Pick from list →</option>
+  </select>
+  <label>Location ID</label>
+  <input id="locationId" type="text" readonly />
+
+  <!-- CAMPAIGN SECTION -->
+  <hr>
+  <div id="campaignSection" class="hidden">
+    <h2>Campaigns</h2>
+    <label>Choose Existing Campaign</label>
+    <select id="campaignSelect">
+      <option value="">Pick from list →</option>
+    </select>
+    <div style="margin-top:10px;">Campaign ID: <span id="campaignIdDisplay">—</span></div>
+
+    <h3 style="margin-top:20px;">Or Add New Campaign</h3>
+    <label>Campaign Name</label>
+    <input id="campaignName" type="text" placeholder="Workflow or Newsletter Name" />
+
+    <label>Description</label>
+    <input id="campaignDescription" type="text" placeholder="Optional description" />
+
+    <label>Notes</label>
+    <textarea id="campaignNotes" placeholder="Optional notes"></textarea>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="addCampaignBtn">Add Campaign</button>
+    </div>
+    <div id="campaignStatus" class="muted"></div>
+  </div>
+
+  <!-- RUNS SECTION -->
+  <hr>
+  <div id="runSection" class="hidden">
+    <h2>Runs for Selected Campaign</h2>
+
+    <!-- Selected Client & Campaign Info -->
+    <div style="margin-bottom:10px;">
+      <strong>Client ID:</strong> <span id="runClientId">—</span><br>
+      <strong>Campaign:</strong> <span id="runCampaignId">—</span> - <span id="runCampaignName">—</span>
+    </div>
+
+    <div id="runsList" class="muted">No runs yet.</div>
+
+    <h3 style="margin-top:20px;">Add New Run</h3>
+    <label>Run Label</label>
+    <input id="runLabel" type="text" placeholder="e.g. 2025-08-10-newsletter" />
+
+    <label>Subject</label>
+    <input id="subject" type="text" placeholder="Email subject line" />
+
+    <label>Notes</label>
+    <textarea id="notes" placeholder="Optional notes"></textarea>
+
+    <div class="row" style="margin-top:16px">
+      <button class="btn primary" id="saveRunBtn">Save Run</button>
+    </div>
+    <div style="margin-top:10px;">Run ID: <span id="runIdDisplay">—</span></div>
+    <div id="runStatus" class="muted"></div>
+  </div>
+</div>
+
+<script>
+const WORKER_BASE = 'https://gtr-cdw-campaign-admin.dennis-e64.workers.dev';
+const el = {
+  secret: document.getElementById('secret'),
+  rememberSecret: document.getElementById('rememberSecret'),
+  useSecretBtn: document.getElementById('useSecretBtn'),
+  clearSecretBtn: document.getElementById('clearSecretBtn'),
+  secretStatus: document.getElementById('secretStatus'),
+
+  clientSelect: document.getElementById('clientSelect'),
+  locationId: document.getElementById('locationId'),
+
+  campaignSection: document.getElementById('campaignSection'),
+  campaignSelect: document.getElementById('campaignSelect'),
+  campaignName: document.getElementById('campaignName'),
+  campaignDescription: document.getElementById('campaignDescription'),
+  campaignNotes: document.getElementById('campaignNotes'),
+  addCampaignBtn: document.getElementById('addCampaignBtn'),
+  campaignStatus: document.getElementById('campaignStatus'),
+  campaignIdDisplay: document.getElementById('campaignIdDisplay'),
+
+  runSection: document.getElementById('runSection'),
+  runClientId: document.getElementById('runClientId'),
+  runCampaignId: document.getElementById('runCampaignId'),
+  runCampaignName: document.getElementById('runCampaignName'),
+  runsList: document.getElementById('runsList'),
+  runLabel: document.getElementById('runLabel'),
+  subject: document.getElementById('subject'),
+  notes: document.getElementById('notes'),
+  saveRunBtn: document.getElementById('saveRunBtn'),
+  runStatus: document.getElementById('runStatus'),
+  runIdDisplay: document.getElementById('runIdDisplay')
 };
+
+function getSecret() {
+  return sessionStorage.getItem('gtr_admin_secret')
+      || localStorage.getItem('gtr_admin_secret')
+      || '';
+}
+function setSecret(sec, remember) {
+  sessionStorage.removeItem('gtr_admin_secret');
+  localStorage.removeItem('gtr_admin_secret');
+  if (remember) localStorage.setItem('gtr_admin_secret', sec);
+  else sessionStorage.setItem('gtr_admin_secret', sec);
+}
+function showSecretStatus(msg, ok=false) {
+  el.secretStatus.textContent = msg;
+  el.secretStatus.className = ok ? 'ok' : 'muted';
+}
+
+async function loadClients() {
+  const secret = getSecret();
+  if (!secret) { showSecretStatus('Paste admin secret'); return; }
+  el.clientSelect.innerHTML = '<option>Loading…</option>';
+  try {
+    const r = await fetch(`${WORKER_BASE}/clients`, { headers: { 'X-Admin-Secret': secret }});
+    const { rows } = await r.json();
+    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>' +
+      rows.map(row => `<option value="${row.location_id}">${row.business_name||row.full_name||row.email}</option>`).join('');
+    showSecretStatus(`Loaded ${rows.length} clients`, true);
+  } catch (e) {
+    el.clientSelect.innerHTML = '<option value="">Pick from list →</option>';
+    showSecretStatus('Failed to load clients');
+  }
+}
+
+async function loadCampaigns(locationId) {
+  const secret = getSecret();
+  el.campaignSelect.innerHTML = '<option>Loading…</option>';
+  try {
+    const r = await fetch(`${WORKER_BASE}/campaigns?location_id=${encodeURIComponent(locationId)}`, { headers: { 'X-Admin-Secret': secret }});
+    const { rows } = await r.json();
+    el.campaignSelect.innerHTML = '<option value="">Pick from list →</option>' +
+      rows.map(row => `<option value="${row.campaign_id}">${row.campaign_name}</option>`).join('');
+  } catch (e) {
+    el.campaignSelect.innerHTML = '<option value="">Pick from list →</option>';
+  }
+}
+
+async function loadRuns(campaignId) {
+  const secret = getSecret();
+  try {
+    const r = await fetch(`${WORKER_BASE}/runs?campaign_id=${campaignId}`, { headers: { 'X-Admin-Secret': secret }});
+    const { rows } = await r.json();
+    el.runsList.innerHTML = rows.length ? rows.map(rn => `${rn.run_id}: ${rn.run_label}`).join('<br>') : 'No runs yet.';
+  } catch (e) {
+    el.runsList.textContent = 'Error loading runs';
+  }
+}
+
+// EVENT: use secret
+el.useSecretBtn.onclick = () => {
+  const sec = el.secret.value.trim();
+  if (!sec) return alert('Paste ADMIN_SECRET');
+  setSecret(sec, el.rememberSecret.checked);
+  showSecretStatus('Admin secret loaded', true);
+  loadClients();
+};
+el.clearSecretBtn.onclick = () => {
+  sessionStorage.removeItem('gtr_admin_secret');
+  localStorage.removeItem('gtr_admin_secret');
+  el.secret.value = '';
+  showSecretStatus('Secret cleared');
+};
+
+// EVENT: client chosen
+el.clientSelect.onchange = () => {
+  el.locationId.value = el.clientSelect.value || '';
+  if (el.clientSelect.value) {
+    el.campaignSection.classList.remove('hidden');
+    loadCampaigns(el.clientSelect.value);
+  } else {
+    el.campaignSection.classList.add('hidden');
+    el.runSection.classList.add('hidden');
+  }
+};
+
+// EVENT: campaign chosen
+el.campaignSelect.onchange = () => {
+  const cid = el.campaignSelect.value;
+  if (cid) {
+    el.campaignIdDisplay.textContent = cid;
+    el.runClientId.textContent = el.locationId.value || '—';
+    el.runCampaignId.textContent = cid;
+    el.runCampaignName.textContent = el.campaignSelect.options[el.campaignSelect.selectedIndex].text || '—';
+    el.runSection.classList.remove('hidden');
+    loadRuns(cid);
+  } else {
+    el.campaignIdDisplay.textContent = '—';
+    el.runClientId.textContent = '—';
+    el.runCampaignId.textContent = '—';
+    el.runCampaignName.textContent = '—';
+    el.runSection.classList.add('hidden');
+  }
+};
+
+// EVENT: add campaign
+el.addCampaignBtn.onclick = async () => {
+  const secret = getSecret();
+  const location_id = el.locationId.value;
+  const campaign_name = el.campaignName.value.trim();
+  const description = el.campaignDescription.value.trim();
+  const notes = el.campaignNotes.value.trim();
+  if (!campaign_name) return alert('Campaign name required');
+  try {
+    const r = await fetch(`${WORKER_BASE}/campaigns`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
+      body: JSON.stringify({ location_id, campaign_name, description, notes })
+    });
+    const { campaign_id } = await r.json();
+    el.campaignStatus.textContent = 'Campaign added ✔';
+    el.campaignIdDisplay.textContent = campaign_id;
+    el.campaignName.value = '';
+    el.campaignDescription.value = '';
+    el.campaignNotes.value = '';
+    loadCampaigns(location_id);
+  } catch (e) {
+    el.campaignStatus.textContent = 'Error adding campaign';
+  }
+};
+
+// EVENT: save run
+el.saveRunBtn.onclick = async () => {
+  const secret = getSecret();
+  const campaign_id = el.campaignSelect.value;
+  const run_label = el.runLabel.value.trim();
+  const subject = el.subject.value.trim();
+  const notes = el.notes.value.trim();
+  if (!campaign_id) return alert('Pick a campaign first');
+  try {
+    const r = await fetch(`${WORKER_BASE}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
+      body: JSON.stringify({ campaign_id, run_label, subject, notes })
+    });
+    const { run_id } = await r.json();
+    el.runStatus.textContent = 'Run saved ✔';
+    el.runIdDisplay.textContent = run_id;
+    loadRuns(campaign_id);
+  } catch (e) {
+    el.runStatus.textContent = 'Error saving run';
+  }
+};
+
+// Init
+(function init(){
+  const sec = getSecret();
+  if (sec) {
+    el.secret.value = sec;
+    if (localStorage.getItem('gtr_admin_secret')) el.rememberSecret.checked = true;
+    loadClients();
+  }
+})();
+</script>
+</body>
+</html>
