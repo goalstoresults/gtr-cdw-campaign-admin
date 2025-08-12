@@ -30,7 +30,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Campaign Manager <span class="pill">GTR Core</span></h1>
+  <h1>Campaign Manager 1.1 <span class="pill">GTR Core</span></h1>
 
   <!-- ADMIN SECRET -->
   <label>Admin Secret</label>
@@ -68,6 +68,14 @@
     <h3 style="margin-top:20px;">Or Add New Campaign</h3>
     <label>Campaign Name</label>
     <input id="campaignName" type="text" placeholder="Workflow or Newsletter Name" />
+
+    <!-- NEW: description + notes -->
+    <label>Description (optional)</label>
+    <textarea id="campaignDesc" placeholder="What this campaign/workflow is about"></textarea>
+
+    <label>Notes (optional)</label>
+    <textarea id="campaignNotes" placeholder="Imported from GHL raw Exports"></textarea>
+
     <div class="row" style="margin-top:10px">
       <button class="btn primary" id="addCampaignBtn">Add Campaign</button>
     </div>
@@ -113,6 +121,8 @@ const el = {
   campaignSection: document.getElementById('campaignSection'),
   campaignSelect: document.getElementById('campaignSelect'),
   campaignName: document.getElementById('campaignName'),
+  campaignDesc: document.getElementById('campaignDesc'),
+  campaignNotes: document.getElementById('campaignNotes'),
   addCampaignBtn: document.getElementById('addCampaignBtn'),
   campaignStatus: document.getElementById('campaignStatus'),
   campaignIdDisplay: document.getElementById('campaignIdDisplay'),
@@ -223,24 +233,44 @@ el.campaignSelect.onchange = () => {
   }
 };
 
-// EVENT: add campaign
+// EVENT: add campaign (now sends description + notes, appends, clears fields)
 el.addCampaignBtn.onclick = async () => {
   const secret = getSecret();
-  const location_id = el.locationId.value;
+  const location_id   = el.locationId.value;
   const campaign_name = el.campaignName.value.trim();
+  const description   = (el.campaignDesc.value || '').trim();
+  const notes         = (el.campaignNotes.value || '').trim();
   if (!campaign_name) return alert('Campaign name required');
+
   try {
     const r = await fetch(`${WORKER_BASE}/campaigns`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
-      body: JSON.stringify({ location_id, campaign_name })
+      body: JSON.stringify({ location_id, campaign_name, description, notes })
     });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t || 'Add campaign failed');
+    }
     const { campaign_id } = await r.json();
-    el.campaignStatus.textContent = 'Campaign added ✔';
-    el.campaignIdDisplay.textContent = campaign_id;
+
+    // Add to dropdown immediately (do NOT change selection)
+    const opt = new Option(campaign_name, String(campaign_id));
+    el.campaignSelect.add(opt);
+
+    // Clear fields for rapid next entry
+    el.campaignName.value = '';
+    el.campaignDesc.value = '';
+    el.campaignNotes.value = '';
+
+    // Feedback (include new id)
+    el.campaignStatus.textContent = `Campaign added ✔ (ID ${campaign_id})`;
+
+    // Optional: refresh list to keep ordering fresh
     loadCampaigns(location_id);
   } catch (e) {
     el.campaignStatus.textContent = 'Error adding campaign';
+    alert(e.message || e);
   }
 };
 
@@ -252,18 +282,24 @@ el.saveRunBtn.onclick = async () => {
   const subject = el.subject.value.trim();
   const notes = el.notes.value.trim();
   if (!campaign_id) return alert('Pick a campaign first');
+  if (!run_label)   return alert('Run label required');
   try {
     const r = await fetch(`${WORKER_BASE}/runs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Secret': secret },
       body: JSON.stringify({ campaign_id, run_label, subject, notes })
     });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t || 'Save run failed');
+    }
     const { run_id } = await r.json();
     el.runStatus.textContent = 'Run saved ✔';
     el.runIdDisplay.textContent = run_id;
     loadRuns(campaign_id);
   } catch (e) {
     el.runStatus.textContent = 'Error saving run';
+    alert(e.message || e);
   }
 };
 
